@@ -661,114 +661,68 @@ EOF"
         // =====================================================
 
         stage('Verify Application') {
-            steps {
+    steps {
+        withCredentials([sshUserPrivateKey(
+            credentialsId: 'ec2-ssh-key',
+            keyFileVariable: 'SSH_KEY',
+            usernameVariable: 'SSH_USER'
+        )]) {
 
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: "${env.EC2_SSH_CREDENTIAL}",
-                        keyFileVariable: 'SSH_KEY'
-                    )
-                ]) {
+            sh '''
+                set -e
 
-                    sh '''
-                        set -e
+                echo "=========================================="
+                echo "Application Verification"
+                echo "=========================================="
 
-                        echo "=========================================="
-                        echo "Application Verification"
-                        echo "=========================================="
+                echo "Docker Compose Status"
 
-                        chmod 600 "$SSH_KEY"
+                ssh -i "$SSH_KEY" \
+                    -o StrictHostKeyChecking=no \
+                    ${SSH_USER}@${EC2_IP} \
+                    "cd ~/todo-app && sudo docker compose ps"
 
+                echo "Checking Frontend and Backend"
 
-                        # =================================================
-                        # COMPOSE STATUS
-                        # =================================================
+                ssh -i "$SSH_KEY" \
+                    -o StrictHostKeyChecking=no \
+                    ${SSH_USER}@${EC2_IP} \
+                    "
+                    cd ~/todo-app
 
-                        echo "=========================================="
-                        echo "Docker Compose Status"
-                        echo "=========================================="
+                    sudo docker compose ps --services --filter status=running | grep -q '^frontend$'
 
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            "$EC2_USER@$EC2_IP" '
-                                cd ~/todo-app
+                    sudo docker compose ps --services --filter status=running | grep -q '^backend$'
+                    "
 
-                                sudo docker compose ps
-                            '
+                echo "Frontend service is running."
+                echo "Backend service is running."
 
+                echo "Testing Frontend"
 
-                        # =================================================
-                        # VERIFY SERVICES
-                        # =================================================
+                curl --fail \
+                     --silent \
+                     --show-error \
+                     --max-time 15 \
+                     http://${EC2_IP}:8080
 
-                        echo "=========================================="
-                        echo "Checking Frontend and Backend"
-                        echo "=========================================="
+                echo "Frontend is responding successfully."
 
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            "$EC2_USER@$EC2_IP" '
-                                set -e
+                echo "Testing Backend"
 
-                                cd ~/todo-app
+                curl --fail \
+                     --silent \
+                     --show-error \
+                     --max-time 15 \
+                     http://${EC2_IP}:3000/health
 
-                                sudo docker compose ps --services --filter status=running | grep -q "^frontend$"
+                echo "Backend is responding successfully."
 
-                                sudo docker compose ps --services --filter status=running | grep -q "^backend$"
-
-                                echo "Frontend service is running."
-                                echo "Backend service is running."
-                            '
-
-
-                        # =================================================
-                        # FRONTEND HTTP CHECK
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Testing Frontend"
-                        echo "=========================================="
-
-                        curl \
-                            --fail \
-                            --silent \
-                            --show-error \
-                            --max-time 15 \
-                            "http://$EC2_IP"
-
-                        echo ""
-                        echo "Frontend HTTP check passed."
-
-
-                        # =================================================
-                        # BACKEND HEALTH CHECK
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Testing Backend"
-                        echo "=========================================="
-
-                        curl \
-                            --fail \
-                            --silent \
-                            --show-error \
-                            --max-time 15 \
-                            "http://$EC2_IP:3000/health"
-
-                        echo ""
-                        echo "Backend health check passed."
-
-
-                        echo "=========================================="
-                        echo "APPLICATION VERIFICATION PASSED"
-                        echo "=========================================="
-                    '''
-                }
-            }
+                echo "Application verification successful."
+            '''
         }
     }
+}
 
 
     // =====================================================

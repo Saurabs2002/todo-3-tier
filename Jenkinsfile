@@ -1,4 +1,3 @@
-```groovy
 pipeline {
 
     agent any
@@ -824,4 +823,4 @@ Check the failed stage in the Jenkins console.
         }
     }
 }
-```
+

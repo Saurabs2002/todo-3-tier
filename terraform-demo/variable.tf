@@ -61,9 +61,7 @@ variable "key_name" {
   type    = string
   default = "my-ec2-key"
 }
-variable "key_value"{
-  type = string
-}
+
 
 variable "ec2_name" {
   type    = string

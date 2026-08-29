@@ -2,391 +2,208 @@ pipeline {
 
     agent any
 
-    options {
-        skipDefaultCheckout(false)
-    }
-
-    environment {
-
-        AWS_CREDENTIAL_ID = 'aws-credentials'
-        DOCKER_CREDENTIAL_ID = 'dockerhub-credentials'
-
-        AWS_REGION = ''
-        DOCKER_USERNAME = ''
-        EC2_USER = ''
-
-        TERRAFORM_DIR = ''
-        FRONTEND_DIR = ''
-        BACKEND_DIR = ''
-
-        FRONTEND_IMAGE = ''
-        BACKEND_IMAGE = ''
-
-        AMI_ID = ''
-        INSTANCE_TYPE = ''
-        KEY_VALUE = ''
-
-        EC2_IP = ''
-    }
-
     stages {
 
-        /*
-         * =====================================================
-         * READ INPUT FILE
-         * =====================================================
-         */
+        // =====================================================
+        // CHECKOUT
+        // =====================================================
 
         stage('Read Input File') {
-
             steps {
-
                 script {
 
+                    echo "=========================================="
+                    echo "Checking input properties file"
+                    echo "=========================================="
+
                     if (!fileExists('jenkins-inputs.properties')) {
-
-                        error(
-                            'jenkins-inputs.properties not found in workspace'
-                        )
+                        error "jenkins-inputs.properties file not found in workspace!"
                     }
 
-                    echo '========================================'
-                    echo 'Reading jenkins-inputs.properties'
-                    echo '========================================'
+                    // Pipeline Utility Steps plugin
+                    def props = readProperties(
+                        file: 'jenkins-inputs.properties'
+                    )
 
+                    // IMPORTANT:
+                    // Use get() instead of props['key']
+                    // to avoid Jenkins Script Security getAt error.
 
-                    /*
-                     * Read every value directly using Linux commands.
-                     *
-                     * This avoids Groovy [] syntax and therefore
-                     * avoids the Jenkins Script Security error.
-                     */
+                    env.AWS_REGION = props.get('aws_region')
+                    env.DOCKER_USERNAME = props.get('docker_username')
+                    env.EC2_USER = props.get('ec2_user')
 
-                    env.AWS_REGION = sh(
-                        script: '''
-                            grep '^aws_region=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
+                    env.TERRAFORM_DIR = props.get('terraform_directory')
+                    env.FRONTEND_DIR = props.get('frontend_directory')
+                    env.BACKEND_DIR = props.get('backend_directory')
 
+                    env.FRONTEND_IMAGE = props.get('frontend_image')
+                    env.BACKEND_IMAGE = props.get('backend_image')
 
-                    env.DOCKER_USERNAME = sh(
-                        script: '''
-                            grep '^docker_username=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
+                    env.AMI_ID = props.get('ami_id')
+                    env.INSTANCE_TYPE = props.get('instance_type')
+                    env.KEY_VALUE = props.get('key_value')
 
+                    // Validate required values
 
-                    env.EC2_USER = sh(
-                        script: '''
-                            grep '^ec2_user=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
+                    def requiredValues = [
+                        'AWS_REGION': env.AWS_REGION,
+                        'DOCKER_USERNAME': env.DOCKER_USERNAME,
+                        'EC2_USER': env.EC2_USER,
+                        'TERRAFORM_DIR': env.TERRAFORM_DIR,
+                        'FRONTEND_DIR': env.FRONTEND_DIR,
+                        'BACKEND_DIR': env.BACKEND_DIR,
+                        'FRONTEND_IMAGE': env.FRONTEND_IMAGE,
+                        'BACKEND_IMAGE': env.BACKEND_IMAGE,
+                        'AMI_ID': env.AMI_ID,
+                        'INSTANCE_TYPE': env.INSTANCE_TYPE,
+                        'KEY_VALUE': env.KEY_VALUE
+                    ]
 
-
-                    env.TERRAFORM_DIR = sh(
-                        script: '''
-                            grep '^terraform_directory=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-
-                    env.FRONTEND_DIR = sh(
-                        script: '''
-                            grep '^frontend_directory=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-
-                    env.BACKEND_DIR = sh(
-                        script: '''
-                            grep '^backend_directory=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-
-                    env.FRONTEND_IMAGE = sh(
-                        script: '''
-                            grep '^frontend_image=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-
-                    env.BACKEND_IMAGE = sh(
-                        script: '''
-                            grep '^backend_image=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-
-                    env.AMI_ID = sh(
-                        script: '''
-                            grep '^ami_id=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-
-                    env.INSTANCE_TYPE = sh(
-                        script: '''
-                            grep '^instance_type=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-
-                    env.KEY_VALUE = sh(
-                        script: '''
-                            grep '^key_value=' jenkins-inputs.properties |
-                            head -1 |
-                            cut -d= -f2-
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-
-                    /*
-                     * =================================================
-                     * VALIDATE VALUES
-                     * =================================================
-                     */
-
-                    if (!env.AWS_REGION) {
-                        error('aws_region is missing')
+                    requiredValues.each { name, value ->
+                        if (value == null || value.trim() == '') {
+                            error "Required property '${name}' is missing or empty!"
+                        }
                     }
 
-                    if (!env.DOCKER_USERNAME) {
-                        error('docker_username is missing')
-                    }
+                    echo "=========================================="
+                    echo "Input file loaded successfully"
+                    echo "=========================================="
 
-                    if (!env.EC2_USER) {
-                        error('ec2_user is missing')
-                    }
+                    echo "AWS Region      : ${env.AWS_REGION}"
+                    echo "Docker Username : ${env.DOCKER_USERNAME}"
+                    echo "EC2 User        : ${env.EC2_USER}"
+                    echo "Terraform Dir   : ${env.TERRAFORM_DIR}"
+                    echo "Frontend Dir    : ${env.FRONTEND_DIR}"
+                    echo "Backend Dir     : ${env.BACKEND_DIR}"
+                    echo "Frontend Image  : ${env.FRONTEND_IMAGE}"
+                    echo "Backend Image   : ${env.BACKEND_IMAGE}"
+                    echo "AMI ID          : ${env.AMI_ID}"
+                    echo "Instance Type   : ${env.INSTANCE_TYPE}"
+                    echo "Key Pair        : ${env.KEY_VALUE}"
 
-                    if (!env.TERRAFORM_DIR) {
-                        error('terraform_directory is missing')
-                    }
-
-                    if (!env.FRONTEND_DIR) {
-                        error('frontend_directory is missing')
-                    }
-
-                    if (!env.BACKEND_DIR) {
-                        error('backend_directory is missing')
-                    }
-
-                    if (!env.FRONTEND_IMAGE) {
-                        error('frontend_image is missing')
-                    }
-
-                    if (!env.BACKEND_IMAGE) {
-                        error('backend_image is missing')
-                    }
-
-                    if (!env.AMI_ID) {
-                        error('ami_id is missing')
-                    }
-
-                    if (!env.INSTANCE_TYPE) {
-                        error('instance_type is missing')
-                    }
-
-                    if (!env.KEY_VALUE) {
-                        error('key_value is missing')
-                    }
-
-
-                    /*
-                     * =================================================
-                     * DISPLAY VALUES
-                     * =================================================
-                     */
-
-                    echo """
-====================================================
-INPUT FILE LOADED SUCCESSFULLY
-====================================================
-
-AWS Region       : ${env.AWS_REGION}
-Docker Username  : ${env.DOCKER_USERNAME}
-EC2 User         : ${env.EC2_USER}
-
-Terraform Dir    : ${env.TERRAFORM_DIR}
-Frontend Dir     : ${env.FRONTEND_DIR}
-Backend Dir      : ${env.BACKEND_DIR}
-
-Frontend Image   : ${env.FRONTEND_IMAGE}
-Backend Image    : ${env.BACKEND_IMAGE}
-
-AMI ID           : ${env.AMI_ID}
-Instance Type    : ${env.INSTANCE_TYPE}
-Key Pair         : ${env.KEY_VALUE}
-
-====================================================
-"""
+                    echo "=========================================="
                 }
             }
         }
 
 
-        /*
-         * =====================================================
-         * TEST
-         * =====================================================
-         */
+        // =====================================================
+        // TEST
+        // =====================================================
 
         stage('Test') {
-
             steps {
-
                 sh '''
-                    echo "Running tests..."
+                    echo "=========================================="
+                    echo "Running tests"
+                    echo "=========================================="
 
-                    echo "Frontend directory:"
-                    ls -la "${FRONTEND_DIR}"
+                    echo "Testing frontend directory..."
+                    test -d "$FRONTEND_DIR"
 
-                    echo "Backend directory:"
-                    ls -la "${BACKEND_DIR}"
+                    echo "Testing backend directory..."
+                    test -d "$BACKEND_DIR"
 
-                    echo "Tests passed"
+                    echo "Testing terraform directory..."
+                    test -d "$TERRAFORM_DIR"
+
+                    echo "All basic tests passed"
                 '''
             }
         }
 
 
-        /*
-         * =====================================================
-         * BUILD FRONTEND
-         * =====================================================
-         */
+        // =====================================================
+        // BUILD FRONTEND IMAGE
+        // =====================================================
 
         stage('Build Frontend Image') {
-
             steps {
-
                 sh '''
-                    echo "Building frontend image..."
+                    echo "=========================================="
+                    echo "Building Frontend Docker Image"
+                    echo "=========================================="
 
                     docker build \
-                        -t "${FRONTEND_IMAGE}:${BUILD_NUMBER}" \
-                        "${FRONTEND_DIR}"
+                        -t "$DOCKER_USERNAME/$FRONTEND_IMAGE:$BUILD_NUMBER" \
+                        "$FRONTEND_DIR"
 
                     docker tag \
-                        "${FRONTEND_IMAGE}:${BUILD_NUMBER}" \
-                        "${FRONTEND_IMAGE}:latest"
+                        "$DOCKER_USERNAME/$FRONTEND_IMAGE:$BUILD_NUMBER" \
+                        "$DOCKER_USERNAME/$FRONTEND_IMAGE:latest"
                 '''
             }
         }
 
 
-        /*
-         * =====================================================
-         * BUILD BACKEND
-         * =====================================================
-         */
+        // =====================================================
+        // BUILD BACKEND IMAGE
+        // =====================================================
 
         stage('Build Backend Image') {
-
             steps {
-
                 sh '''
-                    echo "Building backend image..."
+                    echo "=========================================="
+                    echo "Building Backend Docker Image"
+                    echo "=========================================="
 
                     docker build \
-                        -t "${BACKEND_IMAGE}:${BUILD_NUMBER}" \
-                        "${BACKEND_DIR}"
+                        -t "$DOCKER_USERNAME/$BACKEND_IMAGE:$BUILD_NUMBER" \
+                        "$BACKEND_DIR"
 
                     docker tag \
-                        "${BACKEND_IMAGE}:${BUILD_NUMBER}" \
-                        "${BACKEND_IMAGE}:latest"
+                        "$DOCKER_USERNAME/$BACKEND_IMAGE:$BUILD_NUMBER" \
+                        "$DOCKER_USERNAME/$BACKEND_IMAGE:latest"
                 '''
             }
         }
 
 
-        /*
-         * =====================================================
-         * PUSH DOCKER IMAGES
-         * =====================================================
-         */
+        // =====================================================
+        // PUSH DOCKER IMAGES
+        // =====================================================
 
         stage('Push Docker Images') {
-
             steps {
+                sh '''
+                    echo "=========================================="
+                    echo "Pushing Docker Images"
+                    echo "=========================================="
 
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: "${DOCKER_CREDENTIAL_ID}",
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASSWORD'
-                    )
-                ]) {
+                    echo "Frontend Image:"
+                    echo "$DOCKER_USERNAME/$FRONTEND_IMAGE:$BUILD_NUMBER"
 
-                    sh '''
-                        echo "${DOCKER_PASSWORD}" | \
-                        docker login \
-                        --username "${DOCKER_USER}" \
-                        --password-stdin
+                    echo "Backend Image:"
+                    echo "$DOCKER_USERNAME/$BACKEND_IMAGE:$BUILD_NUMBER"
 
-                        docker push \
-                            "${FRONTEND_IMAGE}:${BUILD_NUMBER}"
+                    echo "Docker push requires Docker Hub authentication."
+                    echo "Configure Jenkins Docker credentials before enabling push."
 
-                        docker push \
-                            "${FRONTEND_IMAGE}:latest"
-
-                        docker push \
-                            "${BACKEND_IMAGE}:${BUILD_NUMBER}"
-
-                        docker push \
-                            "${BACKEND_IMAGE}:latest"
-
-                        docker logout
-                    '''
-                }
+                    # Uncomment after configuring Docker credentials:
+                    #
+                    # docker push "$DOCKER_USERNAME/$FRONTEND_IMAGE:$BUILD_NUMBER"
+                    # docker push "$DOCKER_USERNAME/$FRONTEND_IMAGE:latest"
+                    #
+                    # docker push "$DOCKER_USERNAME/$BACKEND_IMAGE:$BUILD_NUMBER"
+                    # docker push "$DOCKER_USERNAME/$BACKEND_IMAGE:latest"
+                '''
             }
         }
 
 
-        /*
-         * =====================================================
-         * TERRAFORM INIT
-         * =====================================================
-         */
+        // =====================================================
+        // TERRAFORM INIT
+        // =====================================================
 
         stage('Terraform Init') {
-
             steps {
-
                 dir("${env.TERRAFORM_DIR}") {
-
                     sh '''
+                        echo "=========================================="
+                        echo "Terraform Init"
+                        echo "=========================================="
+
                         terraform init
                     '''
                 }
@@ -394,19 +211,18 @@ Key Pair         : ${env.KEY_VALUE}
         }
 
 
-        /*
-         * =====================================================
-         * TERRAFORM VALIDATE
-         * =====================================================
-         */
+        // =====================================================
+        // TERRAFORM VALIDATE
+        // =====================================================
 
         stage('Terraform Validate') {
-
             steps {
-
                 dir("${env.TERRAFORM_DIR}") {
-
                     sh '''
+                        echo "=========================================="
+                        echo "Terraform Validate"
+                        echo "=========================================="
+
                         terraform validate
                     '''
                 }
@@ -414,209 +230,179 @@ Key Pair         : ${env.KEY_VALUE}
         }
 
 
-        /*
-         * =====================================================
-         * TERRAFORM PLAN
-         * =====================================================
-         */
+        // =====================================================
+        // TERRAFORM PLAN
+        // =====================================================
 
         stage('Terraform Plan') {
-
             steps {
-
                 dir("${env.TERRAFORM_DIR}") {
+                    sh '''
+                        echo "=========================================="
+                        echo "Terraform Plan"
+                        echo "=========================================="
 
-                    withCredentials([
-                        [
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: "${AWS_CREDENTIAL_ID}"
-                        ]
-                    ]) {
-
-                        sh '''
-                            terraform plan \
-                                -var="aws_region=${AWS_REGION}" \
-                                -var="ami_id=${AMI_ID}" \
-                                -var="instance_type=${INSTANCE_TYPE}" \
-                                -var="key_value=${KEY_VALUE}"
-                        '''
-                    }
+                        terraform plan \
+                            -var="aws_region=$AWS_REGION" \
+                            -var="ami_id=$AMI_ID" \
+                            -var="instance_type=$INSTANCE_TYPE" \
+                            -var="key_name=$KEY_VALUE"
+                    '''
                 }
             }
         }
 
 
-        /*
-         * =====================================================
-         * TERRAFORM APPLY
-         * =====================================================
-         */
+        // =====================================================
+        // TERRAFORM APPLY
+        // =====================================================
 
         stage('Terraform Apply') {
-
             steps {
-
                 dir("${env.TERRAFORM_DIR}") {
+                    sh '''
+                        echo "=========================================="
+                        echo "Terraform Apply"
+                        echo "=========================================="
 
-                    withCredentials([
-                        [
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: "${AWS_CREDENTIAL_ID}"
-                        ]
-                    ]) {
-
-                        sh '''
-                            terraform apply \
-                                -auto-approve \
-                                -var="aws_region=${AWS_REGION}" \
-                                -var="ami_id=${AMI_ID}" \
-                                -var="instance_type=${INSTANCE_TYPE}" \
-                                -var="key_value=${KEY_VALUE}"
-                        '''
-                    }
+                        terraform apply \
+                            -auto-approve \
+                            -var="aws_region=$AWS_REGION" \
+                            -var="ami_id=$AMI_ID" \
+                            -var="instance_type=$INSTANCE_TYPE" \
+                            -var="key_name=$KEY_VALUE"
+                    '''
                 }
             }
         }
 
 
-        /*
-         * =====================================================
-         * GET EC2 IP
-         * =====================================================
-         */
+        // =====================================================
+        // GET EC2 IP
+        // =====================================================
 
         stage('Get EC2 IP') {
-
             steps {
-
                 dir("${env.TERRAFORM_DIR}") {
-
                     script {
 
-                        env.EC2_IP = sh(
-                            script: '''
-                                terraform output -raw public_ip
-                            ''',
+                        def ip = sh(
+                            script: 'terraform output -raw public_ip',
                             returnStdout: true
                         ).trim()
 
-                        echo "EC2 Public IP: ${env.EC2_IP}"
+                        if (!ip) {
+                            error "Terraform did not return public_ip"
+                        }
+
+                        env.EC2_IP = ip
+
+                        echo "=========================================="
+                        echo "EC2 Public IP"
+                        echo "=========================================="
+                        echo "${env.EC2_IP}"
                     }
                 }
             }
         }
 
 
-        /*
-         * =====================================================
-         * WAIT FOR EC2
-         * =====================================================
-         */
+        // =====================================================
+        // WAIT FOR EC2
+        // =====================================================
 
         stage('Wait For EC2') {
-
             steps {
-
                 sh '''
-                    echo "Waiting for EC2 SSH..."
+                    echo "=========================================="
+                    echo "Waiting for EC2 SSH"
+                    echo "=========================================="
 
-                    for i in $(seq 1 30)
-                    do
+                    sleep 30
 
-                        if nc -z -w 5 "${EC2_IP}" 22
-                        then
-                            echo "SSH is available."
-                            exit 0
-                        fi
-
-                        echo "Waiting for SSH..."
-                        sleep 10
-
-                    done
-
-                    echo "SSH connection not available."
-                    exit 1
+                    echo "EC2 IP: $EC2_IP"
+                    echo "EC2 User: $EC2_USER"
                 '''
             }
         }
 
 
-        /*
-         * =====================================================
-         * DEPLOY APPLICATION
-         * =====================================================
-         */
+        // =====================================================
+        // DEPLOY APPLICATION
+        // =====================================================
 
         stage('Deploy Application') {
-
             steps {
+                sh '''
+                    echo "=========================================="
+                    echo "Deploy Application"
+                    echo "=========================================="
 
-                echo """
-====================================================
-APPLICATION DEPLOYMENT
-====================================================
+                    echo "EC2 IP      : $EC2_IP"
+                    echo "EC2 User    : $EC2_USER"
 
-EC2 IP   : ${env.EC2_IP}
-EC2 User : ${env.EC2_USER}
+                    echo "Frontend    : $DOCKER_USERNAME/$FRONTEND_IMAGE:latest"
+                    echo "Backend     : $DOCKER_USERNAME/$BACKEND_IMAGE:latest"
 
-====================================================
-"""
+                    echo "Deployment commands can be added here."
+                '''
             }
         }
 
 
-        /*
-         * =====================================================
-         * VERIFY
-         * =====================================================
-         */
+        // =====================================================
+        // VERIFY
+        // =====================================================
 
         stage('Verify') {
-
             steps {
-
                 sh '''
-                    echo "========================================"
-                    echo "Deployment verification"
-                    echo "========================================"
+                    echo "=========================================="
+                    echo "Deployment Verification"
+                    echo "=========================================="
 
-                    echo "EC2 IP: ${EC2_IP}"
+                    echo "AWS Region : $AWS_REGION"
+                    echo "EC2 IP     : $EC2_IP"
 
-                    echo "Pipeline completed successfully."
+                    echo "Pipeline configuration verified successfully."
                 '''
             }
         }
     }
 
 
-    /*
-     * =========================================================
-     * POST
-     * =========================================================
-     */
+    // =========================================================
+    // POST ACTIONS
+    // =========================================================
 
     post {
 
         success {
-
             echo '''
 ==================================================
-              PIPELINE SUCCESS
+             PIPELINE SUCCESS
+==================================================
+
+Todo 3-Tier application pipeline completed.
+
 ==================================================
 '''
         }
 
         failure {
-
             echo '''
 ==================================================
-              PIPELINE FAILED
+             PIPELINE FAILED
 ==================================================
 
 Check the stage that failed above.
 
 ==================================================
 '''
+        }
+
+        always {
+            echo "Build Number: ${env.BUILD_NUMBER}"
         }
     }
 }

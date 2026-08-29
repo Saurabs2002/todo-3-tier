@@ -73,6 +73,20 @@ resource "aws_security_group" "my_sg" {
     protocol    = "tcp"
     cidr_blocks = [var.my_ip]
   }
+   ingress {
+    description = "HTTP"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [var.internet_cidr]
+  }
+ ingress {
+    description = "HTTP"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = [var.internet_cidr]
+  }
 
   # HTTP
   ingress {

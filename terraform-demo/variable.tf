@@ -7,6 +7,10 @@ variable "vpc_name" {
   type    = string
   default = "three-tier-vpc"
 }
+variable "aws_region" {
+  type    = string
+  default = "ap-south-1"
+}
 
 variable "public_subnet_cidr" {
   type    = string

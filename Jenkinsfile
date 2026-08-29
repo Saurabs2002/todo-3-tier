@@ -1,261 +1,499 @@
 pipeline {
-agent any
 
-environment {
+    agent any
 
-    AWS_CREDENTIAL_ID = 'aws-credentials'
-    DOCKER_CREDENTIAL_ID = 'docker-credentials'
+    environment {
 
-    AWS_REGION = ''
-    DOCKER_USERNAME = ''
-    EC2_USER = ''
-    TERRAFORM_DIR = ''
-    FRONTEND_DIR = ''
-    BACKEND_DIR = ''
-    FRONTEND_IMAGE = ''
-    BACKEND_IMAGE = ''
+        AWS_CREDENTIAL_ID = 'aws-credentials'
 
-    AMI_ID = ''
-    INSTANCE_TYPE = ''
-    KEY_VALUE = ''
-}
+        DOCKER_CREDENTIAL_ID = 'docker-credentials'
 
-stages {
+        AWS_REGION = ''
+        DOCKER_USERNAME = ''
+        EC2_USER = ''
 
-    stage('Checkout') {
-        steps {
-            checkout scm
-        }
+        TERRAFORM_DIR = ''
+        FRONTEND_DIR = ''
+        BACKEND_DIR = ''
+
+        FRONTEND_IMAGE = ''
+        BACKEND_IMAGE = ''
+
+        AMI_ID = ''
+        INSTANCE_TYPE = ''
+        KEY_VALUE = ''
     }
 
-    stage('Read Input File') {
-        steps {
-            script {
+    stages {
 
-                if (!fileExists('jenkins-inputs.properties')) {
-                    error 'jenkins-inputs.properties file not found'
-                }
+        stage('Checkout') {
 
-                env.AWS_REGION = sh(
-                    script: "grep '^aws_region=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
+            steps {
 
-                env.DOCKER_USERNAME = sh(
-                    script: "grep '^docker_username=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
-
-                env.EC2_USER = sh(
-                    script: "grep '^ec2_user=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
-
-                env.TERRAFORM_DIR = sh(
-                    script: "grep '^terraform_directory=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
-
-                env.FRONTEND_DIR = sh(
-                    script: "grep '^frontend_directory=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
-
-                env.BACKEND_DIR = sh(
-                    script: "grep '^backend_directory=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
-
-                env.FRONTEND_IMAGE = sh(
-                    script: "grep '^frontend_image=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
-
-                env.BACKEND_IMAGE = sh(
-                    script: "grep '^backend_image=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
-
-                env.AMI_ID = sh(
-                    script: "grep '^ami_id=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
-
-                env.INSTANCE_TYPE = sh(
-                    script: "grep '^instance_type=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
-
-                env.KEY_VALUE = sh(
-                    script: "grep '^key_value=' jenkins-inputs.properties | cut -d'=' -f2-",
-                    returnStdout: true
-                ).trim()
-
-                echo "===================================="
-                echo "Input file loaded successfully"
-                echo "===================================="
-                echo "AWS Region: ${env.AWS_REGION}"
-                echo "Docker Username: ${env.DOCKER_USERNAME}"
-                echo "EC2 User: ${env.EC2_USER}"
-                echo "Terraform Directory: ${env.TERRAFORM_DIR}"
-                echo "Frontend Directory: ${env.FRONTEND_DIR}"
-                echo "Backend Directory: ${env.BACKEND_DIR}"
-                echo "Frontend Image: ${env.FRONTEND_IMAGE}"
-                echo "Backend Image: ${env.BACKEND_IMAGE}"
-                echo "AMI ID: ${env.AMI_ID}"
-                echo "Instance Type: ${env.INSTANCE_TYPE}"
-                echo "Key Pair: ${env.KEY_VALUE}"
-                echo "===================================="
+                checkout scm
             }
         }
-    }
 
-    stage('Test') {
-        steps {
-            sh '''
-                echo "Running tests..."
-                echo "Tests passed"
-            '''
+
+        stage('Read Input File') {
+
+            steps {
+
+                script {
+
+                    /*
+                     * Check whether properties file exists
+                     */
+
+                    if (!fileExists('jenkins-inputs.properties')) {
+
+                        error(
+                            'jenkins-inputs.properties file not found'
+                        )
+                    }
+
+
+                    /*
+                     * Create empty map
+                     */
+
+                    def props = [:]
+
+
+                    /*
+                     * Read properties file
+                     */
+
+                    def inputFile =
+                        readFile(
+                            file: 'jenkins-inputs.properties'
+                        )
+
+
+                    /*
+                     * Parse every line
+                     */
+
+                    inputFile.readLines().each { line ->
+
+                        line = line.trim()
+
+
+                        /*
+                         * Ignore blank lines
+                         */
+
+                        if (line == '') {
+                            return
+                        }
+
+
+                        /*
+                         * Ignore comments
+                         */
+
+                        if (line.startsWith('#')) {
+                            return
+                        }
+
+
+                        /*
+                         * Find "="
+                         */
+
+                        def separator =
+                            line.indexOf('=')
+
+
+                        /*
+                         * Make sure line has key=value
+                         */
+
+                        if (separator <= 0) {
+
+                            error(
+                                "Invalid property line: ${line}"
+                            )
+                        }
+
+
+                        /*
+                         * Extract key
+                         */
+
+                        def key =
+                            line.substring(
+                                0,
+                                separator
+                            ).trim()
+
+
+                        /*
+                         * Extract value
+                         */
+
+                        def value =
+                            line.substring(
+                                separator + 1
+                            ).trim()
+
+
+                        /*
+                         * Store in map
+                         */
+
+                        props[key] = value
+                    }
+
+
+                    /*
+                     * Required properties
+                     */
+
+                    def requiredProperties = [
+
+                        'aws_region',
+
+                        'docker_username',
+
+                        'ec2_user',
+
+                        'terraform_directory',
+
+                        'frontend_directory',
+
+                        'backend_directory',
+
+                        'frontend_image',
+
+                        'backend_image',
+
+                        'ami_id',
+
+                        'instance_type',
+
+                        'key_value'
+                    ]
+
+
+                    /*
+                     * Validate properties
+                     */
+
+                    requiredProperties.each { key ->
+
+                        if (
+                            !props.containsKey(key) ||
+                            props[key] == ''
+                        ) {
+
+                            error(
+                                "Missing required property: ${key}"
+                            )
+                        }
+                    }
+
+
+                    /*
+                     * Set Jenkins environment variables
+                     */
+
+                    env.AWS_REGION =
+                        props['aws_region']
+
+
+                    env.DOCKER_USERNAME =
+                        props['docker_username']
+
+
+                    env.EC2_USER =
+                        props['ec2_user']
+
+
+                    env.TERRAFORM_DIR =
+                        props['terraform_directory']
+
+
+                    env.FRONTEND_DIR =
+                        props['frontend_directory']
+
+
+                    env.BACKEND_DIR =
+                        props['backend_directory']
+
+
+                    env.FRONTEND_IMAGE =
+                        props['frontend_image']
+
+
+                    env.BACKEND_IMAGE =
+                        props['backend_image']
+
+
+                    env.AMI_ID =
+                        props['ami_id']
+
+
+                    env.INSTANCE_TYPE =
+                        props['instance_type']
+
+
+                    env.KEY_VALUE =
+                        props['key_value']
+
+
+                    /*
+                     * Display values
+                     */
+
+                    echo '========================================'
+
+                    echo 'Input file loaded successfully'
+
+                    echo '========================================'
+
+                    echo "AWS Region       : ${env.AWS_REGION}"
+
+                    echo "Docker Username  : ${env.DOCKER_USERNAME}"
+
+                    echo "EC2 User         : ${env.EC2_USER}"
+
+                    echo "Terraform Dir    : ${env.TERRAFORM_DIR}"
+
+                    echo "Frontend Dir     : ${env.FRONTEND_DIR}"
+
+                    echo "Backend Dir      : ${env.BACKEND_DIR}"
+
+                    echo "Frontend Image   : ${env.FRONTEND_IMAGE}"
+
+                    echo "Backend Image    : ${env.BACKEND_IMAGE}"
+
+                    echo "AMI ID           : ${env.AMI_ID}"
+
+                    echo "Instance Type    : ${env.INSTANCE_TYPE}"
+
+                    echo "Key Pair         : ${env.KEY_VALUE}"
+
+                    echo '========================================'
+                }
+            }
         }
-    }
 
-    stage('Build Frontend Image') {
-        steps {
-            sh """
-                docker build \
-                -t ${env.FRONTEND_IMAGE}:${env.BUILD_NUMBER} \
-                ./${env.FRONTEND_DIR}
-            """
+
+        stage('Test') {
+
+            steps {
+
+                sh '''
+                    echo "Running tests..."
+
+                    echo "Tests passed"
+                '''
+            }
         }
-    }
 
-    stage('Build Backend Image') {
-        steps {
-            sh """
-                docker build \
-                -t ${env.BACKEND_IMAGE}:${env.BUILD_NUMBER} \
-                ./${env.BACKEND_DIR}
-            """
-        }
-    }
 
-    stage('Push Docker Images') {
-        steps {
+        stage('Build Frontend Image') {
 
-            withCredentials([
-                usernamePassword(
-                    credentialsId: "${DOCKER_CREDENTIAL_ID}",
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )
-            ]) {
+            steps {
 
                 sh """
-                    echo "\$DOCKER_PASSWORD" | \
-                    docker login \
-                    -u "\$DOCKER_USER" \
-                    --password-stdin
 
-                    docker push \
-                    ${env.FRONTEND_IMAGE}:${env.BUILD_NUMBER}
+                    docker build \
+                    -t ${env.FRONTEND_IMAGE}:${env.BUILD_NUMBER} \
+                    ./${env.FRONTEND_DIR}
 
-                    docker push \
-                    ${env.BACKEND_IMAGE}:${env.BUILD_NUMBER}
-
-                    docker logout
                 """
             }
         }
-    }
 
-    stage('Terraform Init') {
-        steps {
 
-            dir("${env.TERRAFORM_DIR}") {
+        stage('Build Backend Image') {
 
-                sh 'terraform init'
+            steps {
+
+                sh """
+
+                    docker build \
+                    -t ${env.BACKEND_IMAGE}:${env.BUILD_NUMBER} \
+                    ./${env.BACKEND_DIR}
+
+                """
             }
         }
-    }
 
-    stage('Terraform Validate') {
-        steps {
 
-            dir("${env.TERRAFORM_DIR}") {
+        stage('Push Docker Images') {
 
-                sh 'terraform validate'
-            }
-        }
-    }
-
-    stage('Terraform Plan') {
-        steps {
-
-            dir("${env.TERRAFORM_DIR}") {
+            steps {
 
                 withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding',
-                     credentialsId: "${AWS_CREDENTIAL_ID}"]
+
+                    usernamePassword(
+
+                        credentialsId:
+                            "${DOCKER_CREDENTIAL_ID}",
+
+                        usernameVariable:
+                            'DOCKER_USER',
+
+                        passwordVariable:
+                            'DOCKER_PASSWORD'
+                    )
+
                 ]) {
 
                     sh """
-                        terraform plan \
-                        -var="aws_region=${env.AWS_REGION}" \
-                        -var="ami_id=${env.AMI_ID}" \
-                        -var="instance_type=${env.INSTANCE_TYPE}" \
-                        -var="key_value=${env.KEY_VALUE}"
+
+                        echo "\$DOCKER_PASSWORD" | \
+                        docker login \
+                        -u "\$DOCKER_USER" \
+                        --password-stdin
+
+
+                        docker push \
+                        ${env.FRONTEND_IMAGE}:${env.BUILD_NUMBER}
+
+
+                        docker push \
+                        ${env.BACKEND_IMAGE}:${env.BUILD_NUMBER}
+
+
+                        docker logout
+
                     """
+                }
+            }
+        }
+
+
+        stage('Terraform Init') {
+
+            steps {
+
+                dir("${env.TERRAFORM_DIR}") {
+
+                    sh '''
+
+                        terraform init
+
+                    '''
+                }
+            }
+        }
+
+
+        stage('Terraform Validate') {
+
+            steps {
+
+                dir("${env.TERRAFORM_DIR}") {
+
+                    sh '''
+
+                        terraform validate
+
+                    '''
+                }
+            }
+        }
+
+
+        stage('Terraform Plan') {
+
+            steps {
+
+                dir("${env.TERRAFORM_DIR}") {
+
+                    withCredentials([
+
+                        [
+                            $class:
+                                'AmazonWebServicesCredentialsBinding',
+
+                            credentialsId:
+                                "${AWS_CREDENTIAL_ID}"
+                        ]
+
+                    ]) {
+
+                        sh """
+
+                            terraform plan \
+                            -var="aws_region=${env.AWS_REGION}" \
+                            -var="ami_id=${env.AMI_ID}" \
+                            -var="instance_type=${env.INSTANCE_TYPE}" \
+                            -var="key_value=${env.KEY_VALUE}"
+
+                        """
+                    }
+                }
+            }
+        }
+
+
+        stage('Terraform Apply') {
+
+            steps {
+
+                dir("${env.TERRAFORM_DIR}") {
+
+                    withCredentials([
+
+                        [
+                            $class:
+                                'AmazonWebServicesCredentialsBinding',
+
+                            credentialsId:
+                                "${AWS_CREDENTIAL_ID}"
+                        ]
+
+                    ]) {
+
+                        sh """
+
+                            terraform apply \
+                            -auto-approve \
+                            -var="aws_region=${env.AWS_REGION}" \
+                            -var="ami_id=${env.AMI_ID}" \
+                            -var="instance_type=${env.INSTANCE_TYPE}" \
+                            -var="key_value=${env.KEY_VALUE}"
+
+                        """
+                    }
                 }
             }
         }
     }
 
-    stage('Terraform Apply') {
-        steps {
 
-            dir("${env.TERRAFORM_DIR}") {
+    post {
 
-                withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding',
-                     credentialsId: "${AWS_CREDENTIAL_ID}"]
-                ]) {
+        success {
 
-                    sh """
-                        terraform apply \
-                        -auto-approve \
-                        -var="aws_region=${env.AWS_REGION}" \
-                        -var="ami_id=${env.AMI_ID}" \
-                        -var="instance_type=${env.INSTANCE_TYPE}" \
-                        -var="key_value=${env.KEY_VALUE}"
-                    """
-                }
-            }
+            echo '''
+
+            ==========================================
+                 PIPELINE SUCCESS
+            ==========================================
+
+            '''
+        }
+
+
+        failure {
+
+            echo '''
+
+            ==========================================
+                 PIPELINE FAILED
+            ==========================================
+
+            Check Jenkins Console Output.
+
+            ==========================================
+
+            '''
         }
     }
-}
-
-post {
-
-    success {
-        echo '''
-        ==========================================
-              PIPELINE SUCCESS
-        ==========================================
-        '''
-    }
-
-    failure {
-        echo '''
-        ==========================================
-              PIPELINE FAILED
-        ==========================================
-
-        Check Jenkins Console Output.
-
-        ==========================================
-        '''
-    }
-}
-
-
 }

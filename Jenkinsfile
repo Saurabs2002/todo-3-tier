@@ -2,50 +2,11 @@ pipeline {
 
     agent any
 
-    parameters {
-
-        string(
-            name: 'DOCKER_USERNAME',
-            defaultValue: 'yourdockerusername',
-            description: 'Docker Hub username'
-        )
-
-        string(
-            name: 'AWS_REGION',
-            defaultValue: 'ap-south-1',
-            description: 'AWS region'
-        )
-
-        string(
-            name: 'EC2_USER',
-            defaultValue: 'ubuntu',
-            description: 'EC2 SSH username'
-        )
-
-        string(
-            name: 'TERRAFORM_DIR',
-            defaultValue: 'terraform',
-            description: 'Terraform directory'
-        )
-
-        booleanParam(
-            name: 'TERRAFORM_APPLY',
-            defaultValue: true,
-            description: 'Apply Terraform infrastructure'
-        )
-    }
-
     environment {
 
         DOCKER_CREDENTIAL_ID = 'dockerhub-credentials'
-
-        AWS_CREDENTIAL_ID = 'aws-credentials'
-
-        SSH_CREDENTIAL_ID = 'ec2-ssh-key'
-
-        FRONTEND_IMAGE = "${params.DOCKER_USERNAME}/frontend"
-
-        BACKEND_IMAGE = "${params.DOCKER_USERNAME}/backend"
+        AWS_CREDENTIAL_ID    = 'aws-credentials'
+        SSH_CREDENTIAL_ID    = 'ec2-ssh-key'
     }
 
     stages {
@@ -56,33 +17,93 @@ pipeline {
             }
         }
 
-        stage('Test') {
+        stage('Read Input File') {
+
             steps {
+
+                script {
+
+                    def input = readProperties(
+                        file: 'jenkins-inputs.properties'
+                    )
+
+                    env.AWS_REGION = input['AWS_REGION']
+
+                    env.DOCKER_USERNAME =
+                        input['DOCKER_USERNAME']
+
+                    env.EC2_USER =
+                        input['EC2_USER']
+
+                    env.TERRAFORM_DIR =
+                        input['TERRAFORM_DIR']
+
+                    env.FRONTEND_DIR =
+                        input['FRONTEND_DIR']
+
+                    env.BACKEND_DIR =
+                        input['BACKEND_DIR']
+
+                    env.FRONTEND_REPOSITORY =
+                        input['FRONTEND_REPOSITORY']
+
+                    env.BACKEND_REPOSITORY =
+                        input['BACKEND_REPOSITORY']
+
+
+                    env.FRONTEND_IMAGE =
+                        "${env.DOCKER_USERNAME}/${env.FRONTEND_REPOSITORY}"
+
+                    env.BACKEND_IMAGE =
+                        "${env.DOCKER_USERNAME}/${env.BACKEND_REPOSITORY}"
+
+
+                    echo "AWS Region: ${env.AWS_REGION}"
+
+                    echo "Docker Username: ${env.DOCKER_USERNAME}"
+
+                    echo "EC2 User: ${env.EC2_USER}"
+
+                    echo "Terraform Directory: ${env.TERRAFORM_DIR}"
+
+                    echo "Frontend Image: ${env.FRONTEND_IMAGE}"
+
+                    echo "Backend Image: ${env.BACKEND_IMAGE}"
+                }
+            }
+        }
+
+        stage('Test') {
+
+            steps {
+
                 sh '''
-                    echo "Running application tests..."
+                    echo "Running tests..."
                     echo "Tests passed"
                 '''
             }
         }
 
         stage('Build Docker Images') {
+
             steps {
 
                 sh """
                     docker build \
-                    -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} \
-                    ./frontend
+                    -t ${env.FRONTEND_IMAGE}:${BUILD_NUMBER} \
+                    ./${env.FRONTEND_DIR}
                 """
 
                 sh """
                     docker build \
-                    -t ${BACKEND_IMAGE}:${BUILD_NUMBER} \
-                    ./backend
+                    -t ${env.BACKEND_IMAGE}:${BUILD_NUMBER} \
+                    ./${env.BACKEND_DIR}
                 """
             }
         }
 
-        stage('Push to Docker Hub') {
+        stage('Push Docker Images') {
+
             steps {
 
                 withCredentials([
@@ -94,16 +115,17 @@ pipeline {
                 ]) {
 
                     sh """
+
                         echo "\$DOCKER_PASSWORD" | \
                         docker login \
                         -u "\$DOCKER_USER" \
                         --password-stdin
 
                         docker push \
-                        ${FRONTEND_IMAGE}:${BUILD_NUMBER}
+                        ${env.FRONTEND_IMAGE}:${BUILD_NUMBER}
 
                         docker push \
-                        ${BACKEND_IMAGE}:${BUILD_NUMBER}
+                        ${env.BACKEND_IMAGE}:${BUILD_NUMBER}
 
                         docker logout
                     """
@@ -112,9 +134,10 @@ pipeline {
         }
 
         stage('Terraform Init') {
+
             steps {
 
-                dir("${params.TERRAFORM_DIR}") {
+                dir("${env.TERRAFORM_DIR}") {
 
                     sh 'terraform init'
                 }
@@ -122,9 +145,10 @@ pipeline {
         }
 
         stage('Terraform Validate') {
+
             steps {
 
-                dir("${params.TERRAFORM_DIR}") {
+                dir("${env.TERRAFORM_DIR}") {
 
                     sh 'terraform validate'
                 }
@@ -132,18 +156,22 @@ pipeline {
         }
 
         stage('Terraform Plan') {
+
             steps {
 
-                dir("${params.TERRAFORM_DIR}") {
+                dir("${env.TERRAFORM_DIR}") {
 
                     withCredentials([
-                        [$class: 'AmazonWebServicesCredentialsBinding',
-                         credentialsId: "${AWS_CREDENTIAL_ID}"]
+                        [$class:
+                            'AmazonWebServicesCredentialsBinding',
+                            credentialsId:
+                            "${AWS_CREDENTIAL_ID}"
+                        ]
                     ]) {
 
                         sh """
                             terraform plan \
-                            -var="aws_region=${params.AWS_REGION}"
+                            -var="aws_region=${env.AWS_REGION}"
                         """
                     }
                 }
@@ -152,25 +180,22 @@ pipeline {
 
         stage('Terraform Apply') {
 
-            when {
-                expression {
-                    return params.TERRAFORM_APPLY
-                }
-            }
-
             steps {
 
-                dir("${params.TERRAFORM_DIR}") {
+                dir("${env.TERRAFORM_DIR}") {
 
                     withCredentials([
-                        [$class: 'AmazonWebServicesCredentialsBinding',
-                         credentialsId: "${AWS_CREDENTIAL_ID}"]
+                        [$class:
+                            'AmazonWebServicesCredentialsBinding',
+                            credentialsId:
+                            "${AWS_CREDENTIAL_ID}"
+                        ]
                     ]) {
 
                         sh """
                             terraform apply \
                             -auto-approve \
-                            -var="aws_region=${params.AWS_REGION}"
+                            -var="aws_region=${env.AWS_REGION}"
                         """
                     }
                 }
@@ -179,20 +204,15 @@ pipeline {
 
         stage('Get EC2 IP') {
 
-            when {
-                expression {
-                    return params.TERRAFORM_APPLY
-                }
-            }
-
             steps {
 
-                dir("${params.TERRAFORM_DIR}") {
+                dir("${env.TERRAFORM_DIR}") {
 
                     script {
 
                         env.EC2_IP = sh(
-                            script: 'terraform output -raw ec2_public_ip',
+                            script:
+                            'terraform output -raw ec2_public_ip',
                             returnStdout: true
                         ).trim()
 
@@ -202,13 +222,7 @@ pipeline {
             }
         }
 
-        stage('Wait for EC2') {
-
-            when {
-                expression {
-                    return params.TERRAFORM_APPLY
-                }
-            }
+        stage('Wait For EC2') {
 
             steps {
 
@@ -218,14 +232,18 @@ pipeline {
 
                         sleep 10
 
-                        sshagent(["${SSH_CREDENTIAL_ID}"]) {
+                        sshagent([
+                            "${SSH_CREDENTIAL_ID}"
+                        ]) {
 
                             sh """
+
                                 ssh \
                                 -o StrictHostKeyChecking=no \
                                 -o ConnectTimeout=10 \
-                                ${params.EC2_USER}@${env.EC2_IP} \
+                                ${env.EC2_USER}@${env.EC2_IP} \
                                 "echo EC2 is ready"
+
                             """
                         }
                     }
@@ -235,56 +253,51 @@ pipeline {
 
         stage('Deploy Application') {
 
-            when {
-                expression {
-                    return params.TERRAFORM_APPLY
-                }
-            }
-
             steps {
 
-                sshagent(["${SSH_CREDENTIAL_ID}"]) {
+                sshagent([
+                    "${SSH_CREDENTIAL_ID}"
+                ]) {
 
                     sh """
 
                         scp \
                         -o StrictHostKeyChecking=no \
                         docker-compose.yml \
-                        ${params.EC2_USER}@${env.EC2_IP}:/home/ubuntu/
+                        ${env.EC2_USER}@${env.EC2_IP}:/home/${env.EC2_USER}/
+
 
                         ssh \
                         -o StrictHostKeyChecking=no \
-                        ${params.EC2_USER}@${env.EC2_IP} \
-                        "cd /home/ubuntu && \
+                        ${env.EC2_USER}@${env.EC2_IP} \
+                        "cd /home/${env.EC2_USER} && \
                         export IMAGE_TAG=${BUILD_NUMBER} && \
                         docker compose pull && \
                         docker compose up -d"
+
                     """
                 }
             }
         }
 
-        stage('Verify Application') {
-
-            when {
-                expression {
-                    return params.TERRAFORM_APPLY
-                }
-            }
+        stage('Verify') {
 
             steps {
 
-                sshagent(["${SSH_CREDENTIAL_ID}"]) {
+                sshagent([
+                    "${SSH_CREDENTIAL_ID}"
+                ]) {
 
                     sh """
 
                         ssh \
                         -o StrictHostKeyChecking=no \
-                        ${params.EC2_USER}@${env.EC2_IP} \
+                        ${env.EC2_USER}@${env.EC2_IP} \
                         "docker ps"
 
-                        echo "Application URL:"
-                        echo "http://${env.EC2_IP}"
+                    echo "Application URL:"
+                    echo "http://${env.EC2_IP}"
+
                     """
                 }
             }
@@ -304,10 +317,10 @@ pipeline {
             ${env.EC2_IP}
 
             Frontend:
-            ${FRONTEND_IMAGE}:${BUILD_NUMBER}
+            ${env.FRONTEND_IMAGE}:${BUILD_NUMBER}
 
             Backend:
-            ${BACKEND_IMAGE}:${BUILD_NUMBER}
+            ${env.BACKEND_IMAGE}:${BUILD_NUMBER}
 
             Application:
             http://${env.EC2_IP}
@@ -320,7 +333,7 @@ pipeline {
 
             echo """
             ==========================================
-                 PIPELINE FAILED
+              PIPELINE FAILED
             ==========================================
 
             Check Jenkins Console Output.

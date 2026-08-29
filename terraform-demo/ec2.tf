@@ -97,7 +97,7 @@ resource "aws_security_group" "my_sg" {
 }
 resource "aws_key_pair" "deployer" {
   key_name   = var.key_name
-  public_key = file(terraform-key.pub)
+  public_key = file("${path.module}/terraform-key.pub")
 }
 
 # EC2

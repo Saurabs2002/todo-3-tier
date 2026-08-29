@@ -19,59 +19,90 @@ pipeline {
 
         stage('Read Input File') {
 
-            steps {
+    steps {
 
-                script {
+        script {
 
-                    def input = readProperties(
-                        file: 'jenkins-inputs.properties'
-                    )
+            def configFile = readFile(
+                file: 'jenkins-inputs.properties'
+            )
 
-                    env.AWS_REGION = input['AWS_REGION']
+            def config = [:]
 
-                    env.DOCKER_USERNAME =
-                        input['DOCKER_USERNAME']
+            configFile.split('\n').each { line ->
 
-                    env.EC2_USER =
-                        input['EC2_USER']
+                line = line.trim()
 
-                    env.TERRAFORM_DIR =
-                        input['TERRAFORM_DIR']
+                if (line &&
+                    !line.startsWith('#') &&
+                    line.contains('=')) {
 
-                    env.FRONTEND_DIR =
-                        input['FRONTEND_DIR']
+                    def parts = line.split('=', 2)
 
-                    env.BACKEND_DIR =
-                        input['BACKEND_DIR']
+                    def key = parts[0].trim()
+                    def value = parts[1].trim()
 
-                    env.FRONTEND_REPOSITORY =
-                        input['FRONTEND_REPOSITORY']
-
-                    env.BACKEND_REPOSITORY =
-                        input['BACKEND_REPOSITORY']
-
-
-                    env.FRONTEND_IMAGE =
-                        "${env.DOCKER_USERNAME}/${env.FRONTEND_REPOSITORY}"
-
-                    env.BACKEND_IMAGE =
-                        "${env.DOCKER_USERNAME}/${env.BACKEND_REPOSITORY}"
-
-
-                    echo "AWS Region: ${env.AWS_REGION}"
-
-                    echo "Docker Username: ${env.DOCKER_USERNAME}"
-
-                    echo "EC2 User: ${env.EC2_USER}"
-
-                    echo "Terraform Directory: ${env.TERRAFORM_DIR}"
-
-                    echo "Frontend Image: ${env.FRONTEND_IMAGE}"
-
-                    echo "Backend Image: ${env.BACKEND_IMAGE}"
+                    config[key] = value
                 }
             }
+
+
+            env.AWS_REGION =
+                config['AWS_REGION']
+
+            env.DOCKER_USERNAME =
+                config['DOCKER_USERNAME']
+
+            env.EC2_USER =
+                config['EC2_USER']
+
+            env.TERRAFORM_DIR =
+                config['TERRAFORM_DIR']
+
+            env.FRONTEND_DIR =
+                config['FRONTEND_DIR']
+
+            env.BACKEND_DIR =
+                config['BACKEND_DIR']
+
+            env.FRONTEND_REPOSITORY =
+                config['FRONTEND_REPOSITORY']
+
+            env.BACKEND_REPOSITORY =
+                config['BACKEND_REPOSITORY']
+
+
+            env.FRONTEND_IMAGE =
+                "${env.DOCKER_USERNAME}/${env.FRONTEND_REPOSITORY}"
+
+            env.BACKEND_IMAGE =
+                "${env.DOCKER_USERNAME}/${env.BACKEND_REPOSITORY}"
+
+
+            echo "===================================="
+            echo "Input file loaded successfully"
+            echo "===================================="
+
+            echo "AWS Region: ${env.AWS_REGION}"
+
+            echo "Docker Username: ${env.DOCKER_USERNAME}"
+
+            echo "EC2 User: ${env.EC2_USER}"
+
+            echo "Terraform Directory: ${env.TERRAFORM_DIR}"
+
+            echo "Frontend Directory: ${env.FRONTEND_DIR}"
+
+            echo "Backend Directory: ${env.BACKEND_DIR}"
+
+            echo "Frontend Image: ${env.FRONTEND_IMAGE}"
+
+            echo "Backend Image: ${env.BACKEND_IMAGE}"
+
+            echo "===================================="
         }
+    }
+}
 
         stage('Test') {
 

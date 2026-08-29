@@ -2,7 +2,12 @@ pipeline {
 
     agent any
 
+    options {
+        skipDefaultCheckout(false)
+    }
+
     environment {
+
         AWS_CREDENTIAL_ID = 'aws-credentials'
         DOCKER_CREDENTIAL_ID = 'dockerhub-credentials'
 
@@ -27,22 +32,9 @@ pipeline {
     stages {
 
         /*
-         * =========================================================
-         * CHECKOUT
-         * =========================================================
-         */
-
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
-
-        /*
-         * =========================================================
-         * READ PROPERTIES FILE
-         * =========================================================
+         * =====================================================
+         * READ INPUT FILE
+         * =====================================================
          */
 
         stage('Read Input File') {
@@ -53,114 +45,193 @@ pipeline {
 
                     if (!fileExists('jenkins-inputs.properties')) {
 
-                        error """
-                        jenkins-inputs.properties not found.
-
-                        Make sure the file exists in the root
-                        of the Git repository.
-                        """
+                        error(
+                            'jenkins-inputs.properties not found in workspace'
+                        )
                     }
 
-                    def content = readFile(
-                        file: 'jenkins-inputs.properties'
-                    )
-
-                    def props = [:]
-
-                    content.split('\n').each { line ->
-
-                        line = line.trim()
-
-                        /*
-                         * Ignore blank lines and comments
-                         */
-                        if (line &&
-                            !line.startsWith('#') &&
-                            line.contains('=')) {
-
-                            def parts = line.split(
-                                '=',
-                                2
-                            )
-
-                            def key = parts[0].trim()
-                            def value = parts[1].trim()
-
-                            props[key] = value
-                        }
-                    }
+                    echo '========================================'
+                    echo 'Reading jenkins-inputs.properties'
+                    echo '========================================'
 
 
                     /*
-                     * Read values
+                     * Read every value directly using Linux commands.
+                     *
+                     * This avoids Groovy [] syntax and therefore
+                     * avoids the Jenkins Script Security error.
                      */
 
-                    env.AWS_REGION = props['aws_region']
-                    env.DOCKER_USERNAME = props['docker_username']
-                    env.EC2_USER = props['ec2_user']
+                    env.AWS_REGION = sh(
+                        script: '''
+                            grep '^aws_region=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
 
-                    env.TERRAFORM_DIR =
-                        props['terraform_directory']
 
-                    env.FRONTEND_DIR =
-                        props['frontend_directory']
+                    env.DOCKER_USERNAME = sh(
+                        script: '''
+                            grep '^docker_username=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
 
-                    env.BACKEND_DIR =
-                        props['backend_directory']
 
-                    env.FRONTEND_IMAGE =
-                        props['frontend_image']
+                    env.EC2_USER = sh(
+                        script: '''
+                            grep '^ec2_user=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
 
-                    env.BACKEND_IMAGE =
-                        props['backend_image']
 
-                    env.AMI_ID =
-                        props['ami_id']
+                    env.TERRAFORM_DIR = sh(
+                        script: '''
+                            grep '^terraform_directory=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
 
-                    env.INSTANCE_TYPE =
-                        props['instance_type']
 
-                    env.KEY_VALUE =
-                        props['key_value']
+                    env.FRONTEND_DIR = sh(
+                        script: '''
+                            grep '^frontend_directory=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+
+                    env.BACKEND_DIR = sh(
+                        script: '''
+                            grep '^backend_directory=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+
+                    env.FRONTEND_IMAGE = sh(
+                        script: '''
+                            grep '^frontend_image=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+
+                    env.BACKEND_IMAGE = sh(
+                        script: '''
+                            grep '^backend_image=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+
+                    env.AMI_ID = sh(
+                        script: '''
+                            grep '^ami_id=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+
+                    env.INSTANCE_TYPE = sh(
+                        script: '''
+                            grep '^instance_type=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+
+                    env.KEY_VALUE = sh(
+                        script: '''
+                            grep '^key_value=' jenkins-inputs.properties |
+                            head -1 |
+                            cut -d= -f2-
+                        ''',
+                        returnStdout: true
+                    ).trim()
 
 
                     /*
-                     * Validate required values
+                     * =================================================
+                     * VALIDATE VALUES
+                     * =================================================
                      */
 
-                    def required = [
-                        'AWS_REGION',
-                        'DOCKER_USERNAME',
-                        'EC2_USER',
-                        'TERRAFORM_DIR',
-                        'FRONTEND_DIR',
-                        'BACKEND_DIR',
-                        'FRONTEND_IMAGE',
-                        'BACKEND_IMAGE',
-                        'AMI_ID',
-                        'INSTANCE_TYPE',
-                        'KEY_VALUE'
-                    ]
+                    if (!env.AWS_REGION) {
+                        error('aws_region is missing')
+                    }
 
-                    required.each { variableName ->
+                    if (!env.DOCKER_USERNAME) {
+                        error('docker_username is missing')
+                    }
 
-                        if (!env[variableName] ||
-                            env[variableName] == 'null') {
+                    if (!env.EC2_USER) {
+                        error('ec2_user is missing')
+                    }
 
-                            error(
-                                "Required property '${variableName}' is missing."
-                            )
-                        }
+                    if (!env.TERRAFORM_DIR) {
+                        error('terraform_directory is missing')
+                    }
+
+                    if (!env.FRONTEND_DIR) {
+                        error('frontend_directory is missing')
+                    }
+
+                    if (!env.BACKEND_DIR) {
+                        error('backend_directory is missing')
+                    }
+
+                    if (!env.FRONTEND_IMAGE) {
+                        error('frontend_image is missing')
+                    }
+
+                    if (!env.BACKEND_IMAGE) {
+                        error('backend_image is missing')
+                    }
+
+                    if (!env.AMI_ID) {
+                        error('ami_id is missing')
+                    }
+
+                    if (!env.INSTANCE_TYPE) {
+                        error('instance_type is missing')
+                    }
+
+                    if (!env.KEY_VALUE) {
+                        error('key_value is missing')
                     }
 
 
                     /*
-                     * Display configuration
+                     * =================================================
+                     * DISPLAY VALUES
+                     * =================================================
                      */
 
                     echo """
 ====================================================
-INPUT FILE LOADED
+INPUT FILE LOADED SUCCESSFULLY
 ====================================================
 
 AWS Region       : ${env.AWS_REGION}
@@ -186,9 +257,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
+         * =====================================================
          * TEST
-         * =========================================================
+         * =====================================================
          */
 
         stage('Test') {
@@ -211,9 +282,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
-         * BUILD FRONTEND IMAGE
-         * =========================================================
+         * =====================================================
+         * BUILD FRONTEND
+         * =====================================================
          */
 
         stage('Build Frontend Image') {
@@ -221,7 +292,7 @@ Key Pair         : ${env.KEY_VALUE}
             steps {
 
                 sh '''
-                    echo "Building frontend Docker image..."
+                    echo "Building frontend image..."
 
                     docker build \
                         -t "${FRONTEND_IMAGE}:${BUILD_NUMBER}" \
@@ -236,9 +307,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
-         * BUILD BACKEND IMAGE
-         * =========================================================
+         * =====================================================
+         * BUILD BACKEND
+         * =====================================================
          */
 
         stage('Build Backend Image') {
@@ -246,7 +317,7 @@ Key Pair         : ${env.KEY_VALUE}
             steps {
 
                 sh '''
-                    echo "Building backend Docker image..."
+                    echo "Building backend image..."
 
                     docker build \
                         -t "${BACKEND_IMAGE}:${BUILD_NUMBER}" \
@@ -261,9 +332,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
+         * =====================================================
          * PUSH DOCKER IMAGES
-         * =========================================================
+         * =====================================================
          */
 
         stage('Push Docker Images') {
@@ -272,19 +343,16 @@ Key Pair         : ${env.KEY_VALUE}
 
                 withCredentials([
                     usernamePassword(
-                        credentialsId:
-                            "${DOCKER_CREDENTIAL_ID}",
-                        usernameVariable:
-                            'DOCKER_USER',
-                        passwordVariable:
-                            'DOCKER_PASSWORD'
+                        credentialsId: "${DOCKER_CREDENTIAL_ID}",
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASSWORD'
                     )
                 ]) {
 
                     sh '''
                         echo "${DOCKER_PASSWORD}" | \
                         docker login \
-                        -u "${DOCKER_USER}" \
+                        --username "${DOCKER_USER}" \
                         --password-stdin
 
                         docker push \
@@ -307,9 +375,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
+         * =====================================================
          * TERRAFORM INIT
-         * =========================================================
+         * =====================================================
          */
 
         stage('Terraform Init') {
@@ -327,9 +395,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
+         * =====================================================
          * TERRAFORM VALIDATE
-         * =========================================================
+         * =====================================================
          */
 
         stage('Terraform Validate') {
@@ -347,9 +415,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
+         * =====================================================
          * TERRAFORM PLAN
-         * =========================================================
+         * =====================================================
          */
 
         stage('Terraform Plan') {
@@ -360,11 +428,8 @@ Key Pair         : ${env.KEY_VALUE}
 
                     withCredentials([
                         [
-                            $class:
-                                'AmazonWebServicesCredentialsBinding',
-
-                            credentialsId:
-                                "${AWS_CREDENTIAL_ID}"
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: "${AWS_CREDENTIAL_ID}"
                         ]
                     ]) {
 
@@ -382,9 +447,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
+         * =====================================================
          * TERRAFORM APPLY
-         * =========================================================
+         * =====================================================
          */
 
         stage('Terraform Apply') {
@@ -395,11 +460,8 @@ Key Pair         : ${env.KEY_VALUE}
 
                     withCredentials([
                         [
-                            $class:
-                                'AmazonWebServicesCredentialsBinding',
-
-                            credentialsId:
-                                "${AWS_CREDENTIAL_ID}"
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: "${AWS_CREDENTIAL_ID}"
                         ]
                     ]) {
 
@@ -418,9 +480,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
+         * =====================================================
          * GET EC2 IP
-         * =========================================================
+         * =====================================================
          */
 
         stage('Get EC2 IP') {
@@ -433,8 +495,7 @@ Key Pair         : ${env.KEY_VALUE}
 
                         env.EC2_IP = sh(
                             script: '''
-                                terraform output \
-                                    -raw public_ip
+                                terraform output -raw public_ip
                             ''',
                             returnStdout: true
                         ).trim()
@@ -447,9 +508,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
+         * =====================================================
          * WAIT FOR EC2
-         * =========================================================
+         * =====================================================
          */
 
         stage('Wait For EC2') {
@@ -464,17 +525,16 @@ Key Pair         : ${env.KEY_VALUE}
 
                         if nc -z -w 5 "${EC2_IP}" 22
                         then
-                            echo "SSH port is available."
+                            echo "SSH is available."
                             exit 0
                         fi
 
-                        echo "Waiting..."
-
+                        echo "Waiting for SSH..."
                         sleep 10
 
                     done
 
-                    echo "EC2 SSH is not available."
+                    echo "SSH connection not available."
                     exit 1
                 '''
             }
@@ -482,9 +542,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
         /*
-         * =========================================================
+         * =====================================================
          * DEPLOY APPLICATION
-         * =========================================================
+         * =====================================================
          */
 
         stage('Deploy Application') {
@@ -492,19 +552,23 @@ Key Pair         : ${env.KEY_VALUE}
             steps {
 
                 echo """
-                EC2 deployment stage.
+====================================================
+APPLICATION DEPLOYMENT
+====================================================
 
-                EC2 IP    : ${env.EC2_IP}
-                EC2 User  : ${env.EC2_USER}
-                """
+EC2 IP   : ${env.EC2_IP}
+EC2 User : ${env.EC2_USER}
+
+====================================================
+"""
             }
         }
 
 
         /*
-         * =========================================================
+         * =====================================================
          * VERIFY
-         * =========================================================
+         * =====================================================
          */
 
         stage('Verify') {
@@ -512,9 +576,9 @@ Key Pair         : ${env.KEY_VALUE}
             steps {
 
                 sh '''
-                    echo "======================================"
+                    echo "========================================"
                     echo "Deployment verification"
-                    echo "======================================"
+                    echo "========================================"
 
                     echo "EC2 IP: ${EC2_IP}"
 
@@ -526,9 +590,9 @@ Key Pair         : ${env.KEY_VALUE}
 
 
     /*
-     * =============================================================
-     * POST ACTIONS
-     * =============================================================
+     * =========================================================
+     * POST
+     * =========================================================
      */
 
     post {
@@ -537,7 +601,7 @@ Key Pair         : ${env.KEY_VALUE}
 
             echo '''
 ==================================================
-             PIPELINE SUCCESS
+              PIPELINE SUCCESS
 ==================================================
 '''
         }
@@ -546,7 +610,7 @@ Key Pair         : ${env.KEY_VALUE}
 
             echo '''
 ==================================================
-             PIPELINE FAILED
+              PIPELINE FAILED
 ==================================================
 
 Check the stage that failed above.

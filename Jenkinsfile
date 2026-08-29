@@ -327,83 +327,227 @@ pipeline {
         }
 
 
-        // =====================================================
-        // DEPLOY APPLICATION
-        // =====================================================
+       // =====================================================
+// DEPLOY APPLICATION
+// =====================================================
 
-        stage('Deploy Application') {
-            steps {
-                sh '''
-                    echo "=========================================="
-                    echo "Deploy Application"
-                    echo "=========================================="
+stage('Deploy Application') {
+    steps {
+        sh '''
+            echo "=========================================="
+            echo "Deploy Application"
+            echo "=========================================="
 
-                    echo "EC2 IP      : $EC2_IP"
-                    echo "EC2 User    : $EC2_USER"
+            echo "EC2 IP      : $EC2_IP"
+            echo "EC2 User    : $EC2_USER"
+            echo "Frontend    : $DOCKER_USERNAME/$FRONTEND_IMAGE:latest"
+            echo "Backend     : $DOCKER_USERNAME/$BACKEND_IMAGE:latest"
 
-                    echo "Frontend    : $DOCKER_USERNAME/$FRONTEND_IMAGE:latest"
-                    echo "Backend     : $DOCKER_USERNAME/$BACKEND_IMAGE:latest"
+            echo "=========================================="
+            echo "Installing Docker on EC2"
+            echo "=========================================="
 
-                    echo "Deployment commands can be added here."
-                '''
-            }
-        }
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                sudo apt-get update &&
+                sudo apt-get install -y docker.io docker-compose-plugin &&
+                sudo systemctl enable docker &&
+                sudo systemctl start docker
+            "
 
+            echo "=========================================="
+            echo "Checking Docker"
+            echo "=========================================="
 
-        // =====================================================
-        // VERIFY
-        // =====================================================
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                sudo docker --version
+                sudo docker compose version
+            "
 
-        stage('Verify') {
-            steps {
-                sh '''
-                    echo "=========================================="
-                    echo "Deployment Verification"
-                    echo "=========================================="
+            echo "=========================================="
+            echo "Creating Application Directory"
+            echo "=========================================="
 
-                    echo "AWS Region : $AWS_REGION"
-                    echo "EC2 IP     : $EC2_IP"
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                mkdir -p ~/todo-app
+            "
 
-                    echo "Pipeline configuration verified successfully."
-                '''
-            }
-        }
+            echo "=========================================="
+            echo "Copying Docker Compose File"
+            echo "=========================================="
+
+            scp -o StrictHostKeyChecking=no \
+                docker-compose.yml \
+                $EC2_USER@$EC2_IP:~/todo-app/docker-compose.yml
+
+            echo "=========================================="
+            echo "Docker Compose File Copied"
+            echo "=========================================="
+
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                cd ~/todo-app
+                cat docker-compose.yml
+            "
+
+            echo "=========================================="
+            echo "Pulling Docker Images"
+            echo "=========================================="
+
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                cd ~/todo-app &&
+                sudo docker compose pull
+            "
+
+            echo "=========================================="
+            echo "Stopping Existing Containers"
+            echo "=========================================="
+
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                cd ~/todo-app &&
+                sudo docker compose down || true
+            "
+
+            echo "=========================================="
+            echo "Starting Application"
+            echo "=========================================="
+
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                cd ~/todo-app &&
+                sudo docker compose up -d
+            "
+
+            echo "=========================================="
+            echo "Application Started"
+            echo "=========================================="
+
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                cd ~/todo-app &&
+                sudo docker compose ps
+            "
+        '''
     }
+}
 
 
-    // =========================================================
-    // POST ACTIONS
-    // =========================================================
+// =====================================================
+// VERIFY APPLICATION
+// =====================================================
 
-    post {
+stage('Verify Application') {
+    steps {
+        sh '''
+            echo "=========================================="
+            echo "Application Verification"
+            echo "=========================================="
 
-        success {
-            echo '''
+            echo "EC2 IP : $EC2_IP"
+
+            echo "=========================================="
+            echo "Checking Docker Containers"
+            echo "=========================================="
+
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                cd ~/todo-app &&
+                sudo docker compose ps
+            "
+
+            echo "=========================================="
+            echo "Checking Frontend Container"
+            echo "=========================================="
+
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                sudo docker ps \
+                --filter name=todo-frontend \
+                --filter status=running \
+                | grep todo-frontend
+            "
+
+            echo "Frontend container is running."
+
+
+            echo "=========================================="
+            echo "Checking Backend Container"
+            echo "=========================================="
+
+            ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+                sudo docker ps \
+                --filter name=todo-backend \
+                --filter status=running \
+                | grep todo-backend
+            "
+
+            echo "Backend container is running."
+
+
+            echo "=========================================="
+            echo "Testing Frontend HTTP"
+            echo "=========================================="
+
+            curl -f http://$EC2_IP
+
+            echo ""
+            echo "Frontend HTTP check passed."
+
+
+            echo "=========================================="
+            echo "Testing Backend HTTP"
+            echo "=========================================="
+
+            curl -f http://$EC2_IP:3000
+
+            echo ""
+            echo "Backend HTTP check passed."
+
+
+            echo "=========================================="
+            echo "APPLICATION VERIFICATION PASSED"
+            echo "=========================================="
+        '''
+    }
+}
+
+
+// =====================================================
+// POST ACTIONS
+// =====================================================
+
+post {
+
+    success {
+        echo '''
 ==================================================
              PIPELINE SUCCESS
 ==================================================
 
-Todo 3-Tier application pipeline completed.
+Todo 3-Tier application deployed successfully.
+
+Frontend:
+http://${EC2_IP}
+
+Backend:
+http://${EC2_IP}:3000
 
 ==================================================
 '''
-        }
+    }
 
-        failure {
-            echo '''
+    failure {
+        echo '''
 ==================================================
              PIPELINE FAILED
 ==================================================
 
-Check the stage that failed above.
+Application deployment or verification failed.
+
+Please check the failed stage above.
 
 ==================================================
 '''
-        }
-
-        always {
-            echo "Build Number: ${env.BUILD_NUMBER}"
-        }
     }
+
+    always {
+        echo "Build Number: ${env.BUILD_NUMBER}"
+        echo "EC2 IP: ${env.EC2_IP}"
+    }
+
 }
 

@@ -1,3 +1,4 @@
+```groovy
 pipeline {
 
     agent any
@@ -18,7 +19,7 @@ pipeline {
                 script {
 
                     echo "=========================================="
-                    echo "Reading Jenkins Input File"
+                    echo "Checking input properties file"
                     echo "=========================================="
 
                     if (!fileExists('jenkins-inputs.properties')) {
@@ -29,24 +30,24 @@ pipeline {
                         file: 'jenkins-inputs.properties'
                     )
 
-                    env.AWS_REGION       = props.get('aws_region')
-                    env.DOCKER_USERNAME  = props.get('docker_username')
-                    env.EC2_USER         = props.get('ec2_user')
+                    env.AWS_REGION      = props.get('aws_region')
+                    env.DOCKER_USERNAME = props.get('docker_username')
+                    env.EC2_USER        = props.get('ec2_user')
 
-                    env.TERRAFORM_DIR    = props.get('terraform_directory')
-                    env.FRONTEND_DIR     = props.get('frontend_directory')
-                    env.BACKEND_DIR      = props.get('backend_directory')
+                    env.TERRAFORM_DIR   = props.get('terraform_directory')
+                    env.FRONTEND_DIR    = props.get('frontend_directory')
+                    env.BACKEND_DIR     = props.get('backend_directory')
 
-                    env.FRONTEND_IMAGE   = props.get('frontend_image')
-                    env.BACKEND_IMAGE    = props.get('backend_image')
+                    env.FRONTEND_IMAGE  = props.get('frontend_image')
+                    env.BACKEND_IMAGE   = props.get('backend_image')
 
-                    env.AMI_ID           = props.get('ami_id')
-                    env.INSTANCE_TYPE    = props.get('instance_type')
+                    env.AMI_ID          = props.get('ami_id')
+                    env.INSTANCE_TYPE   = props.get('instance_type')
 
                     // IMPORTANT:
-                    // This must be EC2 KEY PAIR NAME,
-                    // NOT public-key contents.
-                    env.KEY_NAME         = props.get('key_name')
+                    // This must be the AWS EC2 Key Pair NAME.
+                    // Example: todo-ec2-key
+                    env.KEY_NAME        = props.get('key_name')
 
                     def requiredValues = [
                         'AWS_REGION'      : env.AWS_REGION,
@@ -55,11 +56,11 @@ pipeline {
                         'TERRAFORM_DIR'   : env.TERRAFORM_DIR,
                         'FRONTEND_DIR'    : env.FRONTEND_DIR,
                         'BACKEND_DIR'     : env.BACKEND_DIR,
-                        'FRONTEND_IMAGE' : env.FRONTEND_IMAGE,
-                        'BACKEND_IMAGE'  : env.BACKEND_IMAGE,
-                        'AMI_ID'         : env.AMI_ID,
-                        'INSTANCE_TYPE'  : env.INSTANCE_TYPE,
-                        'KEY_NAME'       : env.KEY_NAME
+                        'FRONTEND_IMAGE'  : env.FRONTEND_IMAGE,
+                        'BACKEND_IMAGE'   : env.BACKEND_IMAGE,
+                        'AMI_ID'          : env.AMI_ID,
+                        'INSTANCE_TYPE'   : env.INSTANCE_TYPE,
+                        'KEY_NAME'        : env.KEY_NAME
                     ]
 
                     requiredValues.each { name, value ->
@@ -67,6 +68,10 @@ pipeline {
                             error "Required property '${name}' is missing or empty!"
                         }
                     }
+
+                    echo "=========================================="
+                    echo "Input file loaded successfully"
+                    echo "=========================================="
 
                     echo "AWS Region      : ${env.AWS_REGION}"
                     echo "Docker Username : ${env.DOCKER_USERNAME}"
@@ -78,7 +83,7 @@ pipeline {
                     echo "Backend Image   : ${env.BACKEND_IMAGE}"
                     echo "AMI ID          : ${env.AMI_ID}"
                     echo "Instance Type   : ${env.INSTANCE_TYPE}"
-                    echo "Key Name        : ${env.KEY_NAME}"
+                    echo "EC2 Key Name    : ${env.KEY_NAME}"
 
                     echo "=========================================="
                 }
@@ -102,13 +107,12 @@ pipeline {
                     test -d "$FRONTEND_DIR"
                     test -d "$BACKEND_DIR"
                     test -d "$TERRAFORM_DIR"
-
                     test -f docker-compose.yml
 
-                    echo "Frontend directory : OK"
-                    echo "Backend directory  : OK"
-                    echo "Terraform directory: OK"
-                    echo "Docker Compose file: OK"
+                    echo "Frontend directory  : OK"
+                    echo "Backend directory   : OK"
+                    echo "Terraform directory : OK"
+                    echo "Docker Compose file : OK"
 
                     echo "All basic tests passed."
                 '''
@@ -177,12 +181,6 @@ pipeline {
         stage('Push Docker Images') {
             steps {
 
-                /*
-                 * Replace dockerhub-credentials with the ID
-                 * of your Jenkins Docker Hub username/password
-                 * credential.
-                 */
-
                 withCredentials([
                     usernamePassword(
                         credentialsId: 'dockerhub-credentials',
@@ -195,11 +193,11 @@ pipeline {
                         set -e
 
                         echo "=========================================="
-                        echo "Logging into Docker Hub"
+                        echo "Docker Hub Login"
                         echo "=========================================="
 
                         echo "$DH_TOKEN" | docker login \
-                            -u "$DH_USER" \
+                            --username "$DH_USER" \
                             --password-stdin
 
                         echo "=========================================="
@@ -361,7 +359,7 @@ pipeline {
 
 
         // =====================================================
-        // WAIT FOR EC2
+        // WAIT FOR EC2 SSH
         // =====================================================
 
         stage('Wait For EC2') {
@@ -370,8 +368,7 @@ pipeline {
                 withCredentials([
                     sshUserPrivateKey(
                         credentialsId: "${env.EC2_SSH_CREDENTIAL}",
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
+                        keyFileVariable: 'SSH_KEY'
                     )
                 ]) {
 
@@ -386,13 +383,14 @@ pipeline {
 
                         for i in $(seq 1 12)
                         do
-                            echo "Attempt $i: Connecting to EC2..."
+                            echo "SSH attempt $i..."
 
                             if ssh \
                                 -i "$SSH_KEY" \
                                 -o StrictHostKeyChecking=no \
                                 -o ConnectTimeout=10 \
-                                "$EC2_USER@$EC2_IP" "echo SSH connection successful"
+                                "$EC2_USER@$EC2_IP" \
+                                "echo SSH connection successful"
                             then
                                 echo "EC2 SSH is ready."
                                 exit 0
@@ -402,7 +400,7 @@ pipeline {
                             sleep 10
                         done
 
-                        echo "EC2 SSH connection failed."
+                        echo "Unable to connect to EC2 using SSH."
                         exit 1
                     '''
                 }
@@ -420,8 +418,7 @@ pipeline {
                 withCredentials([
                     sshUserPrivateKey(
                         credentialsId: "${env.EC2_SSH_CREDENTIAL}",
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
+                        keyFileVariable: 'SSH_KEY'
                     )
                 ]) {
 
@@ -440,12 +437,12 @@ pipeline {
                         chmod 600 "$SSH_KEY"
 
 
-                        # -------------------------------------------------
+                        # =================================================
                         # INSTALL DOCKER
-                        # -------------------------------------------------
+                        # =================================================
 
                         echo "=========================================="
-                        echo "Installing Docker"
+                        echo "Installing / Checking Docker"
                         echo "=========================================="
 
                         ssh \
@@ -460,27 +457,58 @@ pipeline {
 
                                     sudo apt-get update
 
-                                    sudo apt-get install -y \
-                                        docker.io \
-                                        docker-compose-plugin
+                                    sudo apt-get install -y docker.io
+
+                                    sudo systemctl enable docker
+                                    sudo systemctl start docker
                                 else
                                     echo "Docker already installed."
                                 fi
 
-                                sudo systemctl enable docker
-                                sudo systemctl start docker
-
                                 echo "Docker version:"
                                 sudo docker --version
+                            '
 
-                                echo "Docker Compose version:"
+
+                        # =================================================
+                        # INSTALL / CHECK DOCKER COMPOSE
+                        # =================================================
+
+                        echo "=========================================="
+                        echo "Checking Docker Compose"
+                        echo "=========================================="
+
+                        ssh \
+                            -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            "$EC2_USER@$EC2_IP" '
+                                set -e
+
+                                if ! sudo docker compose version >/dev/null 2>&1
+                                then
+                                    echo "Docker Compose plugin not found."
+
+                                    sudo apt-get update
+
+                                    if apt-cache show docker-compose-v2 >/dev/null 2>&1
+                                    then
+                                        sudo apt-get install -y docker-compose-v2
+                                    elif apt-cache show docker-compose-plugin >/dev/null 2>&1
+                                    then
+                                        sudo apt-get install -y docker-compose-plugin
+                                    else
+                                        echo "Docker Compose package not available."
+                                        exit 1
+                                    fi
+                                fi
+
                                 sudo docker compose version
                             '
 
 
-                        # -------------------------------------------------
+                        # =================================================
                         # CREATE APPLICATION DIRECTORY
-                        # -------------------------------------------------
+                        # =================================================
 
                         echo "=========================================="
                         echo "Creating Application Directory"
@@ -489,14 +517,13 @@ pipeline {
                         ssh \
                             -i "$SSH_KEY" \
                             -o StrictHostKeyChecking=no \
-                            "$EC2_USER@$EC2_IP" '
-                                mkdir -p ~/todo-app
-                            '
+                            "$EC2_USER@$EC2_IP" \
+                            "mkdir -p ~/todo-app"
 
 
-                        # -------------------------------------------------
+                        # =================================================
                         # COPY DOCKER COMPOSE
-                        # -------------------------------------------------
+                        # =================================================
 
                         echo "=========================================="
                         echo "Copying Docker Compose File"
@@ -509,29 +536,48 @@ pipeline {
                             "$EC2_USER@$EC2_IP:~/todo-app/docker-compose.yml"
 
 
-                        # -------------------------------------------------
-                        # CREATE .ENV FILE
-                        # -------------------------------------------------
+                        # =================================================
+                        # CREATE .ENV
+                        # =================================================
 
                         echo "=========================================="
-                        echo "Creating Environment File"
+                        echo "Creating Compose Environment File"
                         echo "=========================================="
 
                         ssh \
                             -i "$SSH_KEY" \
                             -o StrictHostKeyChecking=no \
-                            "$EC2_USER@$EC2_IP" "
-                                cat > ~/todo-app/.env <<EOF
+                            "$EC2_USER@$EC2_IP" \
+                            "cat > ~/todo-app/.env <<EOF
 DOCKER_USERNAME=$DOCKER_USERNAME
 FRONTEND_IMAGE=$FRONTEND_IMAGE
 BACKEND_IMAGE=$BACKEND_IMAGE
-EOF
-                            "
+EOF"
 
 
-                        # -------------------------------------------------
+                        # =================================================
+                        # VALIDATE COMPOSE
+                        # =================================================
+
+                        echo "=========================================="
+                        echo "Validating Docker Compose"
+                        echo "=========================================="
+
+                        ssh \
+                            -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            "$EC2_USER@$EC2_IP" '
+                                set -e
+
+                                cd ~/todo-app
+
+                                sudo docker compose config
+                            '
+
+
+                        # =================================================
                         # PULL IMAGES
-                        # -------------------------------------------------
+                        # =================================================
 
                         echo "=========================================="
                         echo "Pulling Docker Images"
@@ -541,18 +587,20 @@ EOF
                             -i "$SSH_KEY" \
                             -o StrictHostKeyChecking=no \
                             "$EC2_USER@$EC2_IP" '
+                                set -e
+
                                 cd ~/todo-app
 
                                 sudo docker compose pull
                             '
 
 
-                        # -------------------------------------------------
-                        # STOP OLD APPLICATION
-                        # -------------------------------------------------
+                        # =================================================
+                        # STOP OLD CONTAINERS
+                        # =================================================
 
                         echo "=========================================="
-                        echo "Stopping Existing Application"
+                        echo "Stopping Existing Containers"
                         echo "=========================================="
 
                         ssh \
@@ -565,9 +613,9 @@ EOF
                             '
 
 
-                        # -------------------------------------------------
+                        # =================================================
                         # START APPLICATION
-                        # -------------------------------------------------
+                        # =================================================
 
                         echo "=========================================="
                         echo "Starting Application"
@@ -577,18 +625,20 @@ EOF
                             -i "$SSH_KEY" \
                             -o StrictHostKeyChecking=no \
                             "$EC2_USER@$EC2_IP" '
+                                set -e
+
                                 cd ~/todo-app
 
                                 sudo docker compose up -d
                             '
 
 
-                        # -------------------------------------------------
+                        # =================================================
                         # SHOW STATUS
-                        # -------------------------------------------------
+                        # =================================================
 
                         echo "=========================================="
-                        echo "Docker Compose Status"
+                        echo "Application Status"
                         echo "=========================================="
 
                         ssh \
@@ -617,8 +667,7 @@ EOF
                 withCredentials([
                     sshUserPrivateKey(
                         credentialsId: "${env.EC2_SSH_CREDENTIAL}",
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
+                        keyFileVariable: 'SSH_KEY'
                     )
                 ]) {
 
@@ -632,12 +681,12 @@ EOF
                         chmod 600 "$SSH_KEY"
 
 
-                        # -------------------------------------------------
-                        # CHECK CONTAINERS
-                        # -------------------------------------------------
+                        # =================================================
+                        # COMPOSE STATUS
+                        # =================================================
 
                         echo "=========================================="
-                        echo "Checking Docker Containers"
+                        echo "Docker Compose Status"
                         echo "=========================================="
 
                         ssh \
@@ -650,12 +699,12 @@ EOF
                             '
 
 
-                        # -------------------------------------------------
-                        # CHECK RUNNING CONTAINERS
-                        # -------------------------------------------------
+                        # =================================================
+                        # VERIFY SERVICES
+                        # =================================================
 
                         echo "=========================================="
-                        echo "Checking Running Containers"
+                        echo "Checking Frontend and Backend"
                         echo "=========================================="
 
                         ssh \
@@ -664,23 +713,23 @@ EOF
                             "$EC2_USER@$EC2_IP" '
                                 set -e
 
-                                RUNNING=$(sudo docker compose ps --services --filter status=running)
+                                cd ~/todo-app
 
-                                echo "$RUNNING"
+                                sudo docker compose ps --services --filter status=running | grep -q "^frontend$"
 
-                                echo "$RUNNING" | grep -q frontend
-                                echo "$RUNNING" | grep -q backend
+                                sudo docker compose ps --services --filter status=running | grep -q "^backend$"
 
-                                echo "Frontend and Backend containers are running."
+                                echo "Frontend service is running."
+                                echo "Backend service is running."
                             '
 
 
-                        # -------------------------------------------------
+                        # =================================================
                         # FRONTEND HTTP CHECK
-                        # -------------------------------------------------
+                        # =================================================
 
                         echo "=========================================="
-                        echo "Testing Frontend HTTP"
+                        echo "Testing Frontend"
                         echo "=========================================="
 
                         curl \
@@ -694,12 +743,12 @@ EOF
                         echo "Frontend HTTP check passed."
 
 
-                        # -------------------------------------------------
-                        # BACKEND HTTP CHECK
-                        # -------------------------------------------------
+                        # =================================================
+                        # BACKEND HEALTH CHECK
+                        # =================================================
 
                         echo "=========================================="
-                        echo "Testing Backend HTTP"
+                        echo "Testing Backend"
                         echo "=========================================="
 
                         curl \
@@ -707,10 +756,10 @@ EOF
                             --silent \
                             --show-error \
                             --max-time 15 \
-                            "http://$EC2_IP:3000"
+                            "http://$EC2_IP:3000/health"
 
                         echo ""
-                        echo "Backend HTTP check passed."
+                        echo "Backend health check passed."
 
 
                         echo "=========================================="
@@ -775,4 +824,4 @@ Check the failed stage in the Jenkins console.
         }
     }
 }
-
+```

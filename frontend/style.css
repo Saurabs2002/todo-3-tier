@@ -1,0 +1,297 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    min-height: 100vh;
+
+    background: linear-gradient(
+        135deg,
+        #0f172a,
+        #1e3a8a,
+        #312e81
+    );
+
+    color: #f8fafc;
+
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+
+    padding: 40px 20px;
+}
+
+
+/* =========================
+   MAIN CONTAINER
+   ========================= */
+
+.container {
+    width: 100%;
+    max-width: 700px;
+
+    margin-top: 40px;
+    padding: 35px;
+
+    background: rgba(30, 41, 59, 0.92);
+
+    border-radius: 20px;
+
+    border: 1px solid rgba(148, 163, 184, 0.25);
+
+    box-shadow:
+        0 25px 60px rgba(0, 0, 0, 0.4);
+
+    backdrop-filter: blur(10px);
+}
+
+
+/* =========================
+   HEADING
+   ========================= */
+
+h1 {
+    text-align: center;
+
+    font-size: 34px;
+
+    color: #60a5fa;
+
+    margin-bottom: 8px;
+}
+
+h1::after {
+    content: "Manage your tasks easily";
+
+    display: block;
+
+    margin-top: 8px;
+
+    font-size: 14px;
+
+    font-weight: normal;
+
+    color: #cbd5e1;
+}
+
+h2 {
+    margin-top: 30px;
+    margin-bottom: 15px;
+
+    color: #e2e8f0;
+}
+
+
+/* =========================
+   INPUT SECTION
+   ========================= */
+
+.input-section {
+    display: flex;
+
+    gap: 10px;
+
+    margin-top: 25px;
+}
+
+
+/* =========================
+   INPUT
+   ========================= */
+
+input {
+    flex: 1;
+
+    padding: 14px 16px;
+
+    font-size: 15px;
+
+    border: 1px solid #475569;
+
+    border-radius: 10px;
+
+    outline: none;
+
+    background: #0f172a;
+
+    color: #f8fafc;
+
+    transition: 0.2s;
+}
+
+input::placeholder {
+    color: #94a3b8;
+}
+
+input:focus {
+    border-color: #60a5fa;
+
+    box-shadow:
+        0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+
+/* =========================
+   BUTTON
+   ========================= */
+
+button {
+    padding: 13px 22px;
+
+    cursor: pointer;
+
+    border: none;
+
+    border-radius: 10px;
+
+    background: #2563eb;
+
+    color: white;
+
+    font-size: 15px;
+
+    font-weight: 600;
+
+    transition: all 0.2s;
+}
+
+button:hover {
+    background: #3b82f6;
+
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 8px 20px rgba(37, 99, 235, 0.35);
+}
+
+
+/* =========================
+   TODO LIST
+   ========================= */
+
+ul {
+    padding: 0;
+
+    margin-top: 25px;
+}
+
+
+/* =========================
+   TODO ITEM
+   ========================= */
+
+li {
+    list-style: none;
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    padding: 16px 18px;
+
+    margin: 12px 0;
+
+    background: #334155;
+
+    border: 1px solid #475569;
+
+    border-radius: 12px;
+
+    color: #f1f5f9;
+
+    transition: all 0.2s;
+}
+
+li:hover {
+    background: #3f4f65;
+
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+
+/* =========================
+   TODO TEXT
+   ========================= */
+
+li span {
+    flex: 1;
+
+    font-weight: 500;
+
+    color: #f8fafc;
+
+    word-break: break-word;
+}
+
+
+/* =========================
+   DELETE BUTTON
+   ========================= */
+
+li button {
+    margin-left: 15px;
+
+    padding: 8px 14px;
+
+    background: #dc2626;
+
+    font-size: 13px;
+
+    border-radius: 8px;
+}
+
+li button:hover {
+    background: #ef4444;
+}
+
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+
+@media (max-width: 600px) {
+
+    body {
+        padding: 20px 10px;
+    }
+
+    .container {
+        margin-top: 20px;
+
+        padding: 25px 18px;
+    }
+
+    h1 {
+        font-size: 27px;
+    }
+
+    .input-section {
+        flex-direction: column;
+    }
+
+    input {
+        width: 100%;
+    }
+
+    .input-section button {
+        width: 100%;
+    }
+
+    li {
+        padding: 12px;
+    }
+
+    li button {
+        padding: 7px 10px;
+
+        margin-left: 10px;
+    }
+}

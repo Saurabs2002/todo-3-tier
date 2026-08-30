@@ -1,8 +1,8 @@
 services:
 
-  # =====================================================
+ 
   # FRONTEND
-  # =====================================================
+
   frontend:
     image: ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
     container_name: todo-frontend
@@ -20,9 +20,9 @@ services:
 
 
 
-  # =====================================================
+
   # POSTGRES DATABASE
-  # =====================================================
+
   postgres:
     image: postgres:16-alpine
     container_name: todo-postgres
@@ -55,9 +55,9 @@ services:
 
 
 
-  # =====================================================
+  
   # BACKEND API
-  # =====================================================
+ 
   backend:
     image: ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
     container_name: todo-backend
@@ -108,9 +108,9 @@ services:
     networks:
       - todo-network
 
-  # =====================================================
+ 
   # PROMETHEUS MONITORING
-  # =====================================================
+
   prometheus:
 
     image: prom/prometheus:latest
@@ -144,9 +144,9 @@ services:
 
 
 
-  # =====================================================
+  
   # GRAFANA DASHBOARD
-  # =====================================================
+  
   grafana:
 
     image: grafana/grafana:latest
@@ -180,9 +180,9 @@ services:
 
 
 
-# =====================================================
+
 # NETWORK CONFIGURATION
-# =====================================================
+
 
 networks:
 
@@ -194,9 +194,9 @@ networks:
 
 
 
-# =====================================================
+
 # VOLUMES CONFIGURATION
-# =====================================================
+
 
 volumes:
 

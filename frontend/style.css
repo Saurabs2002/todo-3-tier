@@ -25,9 +25,9 @@ body {
 }
 
 
-/* =========================
-   MAIN CONTAINER
-   ========================= */
+
+ //  MAIN CONTAINER
+ 
 
 .container {
     width: 100%;
@@ -49,9 +49,9 @@ body {
 }
 
 
-/* =========================
-   HEADING
-   ========================= */
+
+ //  HEADING
+  
 
 h1 {
     text-align: center;
@@ -85,9 +85,9 @@ h2 {
 }
 
 
-/* =========================
-   INPUT SECTION
-   ========================= */
+
+  // INPUT SECTION
+
 
 .input-section {
     display: flex;
@@ -98,9 +98,9 @@ h2 {
 }
 
 
-/* =========================
-   INPUT
-   ========================= */
+
+ //  INPUT
+   
 
 input {
     flex: 1;
@@ -134,9 +134,9 @@ input:focus {
 }
 
 
-/* =========================
-   BUTTON
-   ========================= */
+
+//   BUTTON
+  
 
 button {
     padding: 13px 22px;
@@ -168,9 +168,9 @@ button:hover {
 }
 
 
-/* =========================
-   TODO LIST
-   ========================= */
+
+ //  TODO LIST
+
 
 ul {
     padding: 0;
@@ -179,9 +179,9 @@ ul {
 }
 
 
-/* =========================
-   TODO ITEM
-   ========================= */
+
+//   TODO ITEM
+ 
 
 li {
     list-style: none;
@@ -217,9 +217,9 @@ li:hover {
 }
 
 
-/* =========================
-   TODO TEXT
-   ========================= */
+
+  // TODO TEXT
+  
 
 li span {
     flex: 1;
@@ -232,9 +232,9 @@ li span {
 }
 
 
-/* =========================
-   DELETE BUTTON
-   ========================= */
+
+ //  DELETE BUTTON
+
 
 li button {
     margin-left: 15px;
@@ -253,9 +253,9 @@ li button:hover {
 }
 
 
-/* =========================
-   RESPONSIVE
-   ========================= */
+
+ //  RESPONSIVE
+   
 
 @media (max-width: 600px) {
 

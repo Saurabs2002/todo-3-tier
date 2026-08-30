@@ -250,63 +250,36 @@ pipeline {
 
 
         stage('Wait For SSH') {
+    steps {
+        withCredentials([
+            sshUserPrivateKey(
+                credentialsId: 'ec2-ssh-key',
+                keyFileVariable: 'SSH_KEY'
+            )
+        ]) {
 
+            sh '''
+            chmod 600 $SSH_KEY
 
-            steps {
+            echo "Waiting for SSH..."
 
-
-                withCredentials([
-
-                    sshUserPrivateKey(
-
-                        credentialsId: "${EC2_SSH_CREDENTIAL}",
-
-                        keyFileVariable: 'SSH_KEY'
-
-                    )
-
-                ]){
-
-
-                    sh """
-
-                    chmod 600 \$SSH_KEY
-
-
-                    for i in {1..15}
-                    do
-
-                    ssh \
-                    -o StrictHostKeyChecking=no \
+            for i in {1..20}
+            do
+                ssh -o StrictHostKeyChecking=no \
                     -o ConnectTimeout=10 \
-                    -i \$SSH_KEY \
-                    ${EC2_USER}@${EC2_IP} "echo READY"
+                    -i $SSH_KEY \
+                    ubuntu@$EC2_IP echo READY && exit 0
 
+                echo "SSH not ready. Retry $i/20"
+                sleep 15
+            done
 
-                    if [ \$? -eq 0 ]
-                    then
-
-                    break
-
-                    fi
-
-
-                    echo "Waiting for SSH..."
-
-                    sleep 20
-
-
-                    done
-
-                    """
-
-                }
-
-            }
-
+            echo "SSH failed after waiting"
+            exit 1
+            '''
         }
-
-
+    }
+}
 
 
 

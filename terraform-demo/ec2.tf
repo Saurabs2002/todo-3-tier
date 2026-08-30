@@ -73,12 +73,40 @@ resource "aws_security_group" "my_sg" {
     protocol    = "tcp"
     cidr_blocks = [var.my_ip]
   }
+   ingress {
+    description = "HTTP"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [var.internet_cidr]
+  }
+ ingress {
+    description = "HTTP"
+    from_port   = 3001
+    to_port     = 3001
+    protocol    = "tcp"
+    cidr_blocks = [var.internet_cidr]
+  }
+ingress {
+    description = "HTTP"
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    cidr_blocks = [var.internet_cidr]
+  }
 
   # HTTP
   ingress {
     description = "HTTP"
     from_port   = 80
     to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [var.internet_cidr]
+  }
+ingress {
+    description = "HTTP"
+    from_port   = 8001
+    to_port     = 8001
     protocol    = "tcp"
     cidr_blocks = [var.internet_cidr]
   }
@@ -90,6 +118,13 @@ resource "aws_security_group" "my_sg" {
     protocol    = "-1"
     cidr_blocks = [var.internet_cidr]
   }
+ingress {
+    description = "HTTP"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = [var.internet_cidr]
+  }
 
   tags = {
     Name = var.security_group_name
@@ -97,7 +132,7 @@ resource "aws_security_group" "my_sg" {
 }
 resource "aws_key_pair" "deployer" {
   key_name   = var.key_name
-  public_key = var.key_value
+  public_key = file("${path.module}/terraform-key.pub")
 }
 
 # EC2
@@ -113,6 +148,10 @@ resource "aws_instance" "my_ec2" {
   ]
 
   key_name = aws_key_pair.deployer.key_name
+   root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+  }
 
   tags = {
     Name = var.ec2_name

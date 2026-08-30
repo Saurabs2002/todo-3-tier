@@ -1,6 +1,9 @@
+version: "3.8"
+
 services:
 
   # =====================================================
+<<<<<<< HEAD
   # POSTGRESQL DATABASE
   # =====================================================
   postgres:
@@ -25,6 +28,34 @@ services:
 
     volumes:
       - postgres-data:/var/lib/postgresql/data
+=======
+  # POSTGRES DATABASE
+  # =====================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: todo-postgres
+
+    restart: always
+
+    environment:
+      POSTGRES_DB: todo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres
+      interval: 10s
+      timeout: 5s
+      retries: 5
+>>>>>>> 8f4d280e79b0890f7d9a17b4e1d485fb8a747beb
 
     networks:
       - todo-network
@@ -34,10 +65,10 @@ services:
   # BACKEND
   # =====================================================
   backend:
-    build:
-      context: ./backend
-
+    image: ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
     container_name: todo-backend
+
+    restart: always
 
     ports:
       - "3000:3000"
@@ -45,32 +76,39 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
+      DB_NAME: todo
       DB_USER: postgres
       DB_PASSWORD: postgres
-      DB_NAME: todo_db
 
     depends_on:
       postgres:
         condition: service_healthy
-
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
 
     networks:
       - todo-network
 
 
   # =====================================================
+  # FRONTEND
+  # =====================================================
+  frontend:
+    image: ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
+    container_name: todo-frontend
+
+    restart: always
+
+    ports:
+      - "80:80"
+
+    depends_on:
+      - backend
+
+    networks:
+      - todo-network
+
+
+  # =====================================================
+<<<<<<< HEAD
   # FRONTEND
   # =====================================================
   frontend:
@@ -85,12 +123,29 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+=======
+  # PROMETHEUS
+  # =====================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: todo-prometheus
+
+    restart: always
+
+    ports:
+      - "9090:9090"
+
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+>>>>>>> 8f4d280e79b0890f7d9a17b4e1d485fb8a747beb
 
     networks:
       - todo-network
 
 
   # =====================================================
+<<<<<<< HEAD
   # CADVISOR
   # =====================================================
   cadvisor:
@@ -105,11 +160,34 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
+=======
+  # GRAFANA
+  # =====================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: todo-grafana
+
+    restart: always
+
+    ports:
+      - "3001:3000"
+
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+    depends_on:
+      - prometheus
+>>>>>>> 8f4d280e79b0890f7d9a17b4e1d485fb8a747beb
 
     networks:
       - todo-network
 
 
+<<<<<<< HEAD
   # =====================================================
   # PROMETHEUS
   # =====================================================
@@ -158,15 +236,34 @@ services:
 # =========================================================
 # NETWORKS
 # =========================================================
+=======
+
+# =====================================================
+# NETWORKS
+# =====================================================
+>>>>>>> 8f4d280e79b0890f7d9a17b4e1d485fb8a747beb
 networks:
   todo-network:
     driver: bridge
 
 
+<<<<<<< HEAD
 # =========================================================
 # VOLUMES
 # =========================================================
 volumes:
   postgres-data:
   prometheus-data:
+=======
+
+# =====================================================
+# VOLUMES
+# =====================================================
+volumes:
+
+  postgres-data:
+
+  prometheus-data:
+
+>>>>>>> 8f4d280e79b0890f7d9a17b4e1d485fb8a747beb
   grafana-data:

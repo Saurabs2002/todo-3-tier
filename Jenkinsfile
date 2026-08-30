@@ -20,7 +20,7 @@ pipeline {
                 script {
 
                     if (!fileExists('jenkins-inputs.properties')) {
-                        error "jenkins-inputs.properties file not found!"
+                        error "jenkins-inputs.properties file not found"
                     }
 
 
@@ -29,49 +29,44 @@ pipeline {
                     )
 
 
-                    env.AWS_REGION       = props['aws_region']
+                    env.AWS_REGION      = props.aws_region
+                    env.DOCKER_USERNAME = props.docker_username
 
-                    env.DOCKER_USERNAME  = props['docker_username']
-
-                    env.FRONTEND_IMAGE   = props['frontend_image']
-
-                    env.BACKEND_IMAGE    = props['backend_image']
+                    env.FRONTEND_IMAGE  = props.frontend_image
+                    env.BACKEND_IMAGE   = props.backend_image
 
 
-                    env.FRONTEND_DIR     = props['frontend_directory']
-
-                    env.BACKEND_DIR      = props['backend_directory']
-
-
-                    env.PROMETHEUS_DIR   = props['prometheus_directory']
+                    env.FRONTEND_DIR    = props.frontend_directory
+                    env.BACKEND_DIR     = props.backend_directory
 
 
-                    env.TERRAFORM_DIR    = props['terraform_directory']
+                    env.PROMETHEUS_DIR  = props.prometheus_directory
+
+                    env.TERRAFORM_DIR   = props.terraform_directory
 
 
-                    env.AMI_ID           = props['ami_id']
+                    env.AMI_ID          = props.ami_id
+                    env.INSTANCE_TYPE   = props.instance_type
+                    env.KEY_NAME        = props.key_name
 
-                    env.INSTANCE_TYPE    = props['instance_type']
-
-                    env.KEY_NAME         = props['key_name']
-
-                    env.EC2_USER         = props['ec2_user']
+                    env.EC2_USER        = props.ec2_user
 
 
                     echo """
-                    ===============================
+                    =============================
                     Configuration Loaded
-                    ===============================
-                    AWS Region      : ${AWS_REGION}
-                    Frontend Image  : ${FRONTEND_IMAGE}
-                    Backend Image   : ${BACKEND_IMAGE}
-                    Prometheus Dir  : ${PROMETHEUS_DIR}
-                    Terraform Dir   : ${TERRAFORM_DIR}
-                    ===============================
+                    =============================
+                    Region       : ${AWS_REGION}
+                    Frontend     : ${FRONTEND_IMAGE}
+                    Backend      : ${BACKEND_IMAGE}
+                    Terraform    : ${TERRAFORM_DIR}
+                    =============================
                     """
 
                 }
+
             }
+
         }
 
 
@@ -81,7 +76,7 @@ pipeline {
             steps {
 
                 sh """
-                
+
                 docker build \
                 -t ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:${BUILD_NUMBER} \
                 ${FRONTEND_DIR}
@@ -104,11 +99,13 @@ pipeline {
 
             steps {
 
+
                 sh """
 
                 docker build \
                 -t ${DOCKER_USERNAME}/${BACKEND_IMAGE}:${BUILD_NUMBER} \
                 ${BACKEND_DIR}
+
 
 
                 docker tag \
@@ -133,13 +130,9 @@ pipeline {
                 withCredentials([
 
                     usernamePassword(
-
-                        credentialsId: 'dockerhub-credentials',
-
-                        usernameVariable: 'USERNAME',
-
-                        passwordVariable: 'TOKEN'
-
+                        credentialsId:'dockerhub-credentials',
+                        usernameVariable:'USERNAME',
+                        passwordVariable:'TOKEN'
                     )
 
                 ]){
@@ -153,25 +146,19 @@ pipeline {
 
 
 
-                    docker push \
-                    ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:${BUILD_NUMBER}
+                    docker push ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:${BUILD_NUMBER}
+
+                    docker push ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
 
 
-                    docker push \
-                    ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
+                    docker push ${DOCKER_USERNAME}/${BACKEND_IMAGE}:${BUILD_NUMBER}
 
-
-
-                    docker push \
-                    ${DOCKER_USERNAME}/${BACKEND_IMAGE}:${BUILD_NUMBER}
-
-
-                    docker push \
-                    ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
+                    docker push ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
 
 
 
                     docker logout
+
 
                     """
 
@@ -180,6 +167,7 @@ pipeline {
             }
 
         }
+
 
 
 
@@ -204,7 +192,6 @@ pipeline {
                     -var instance_type=${INSTANCE_TYPE} \
                     -var key_name=${KEY_NAME}
 
-
                     """
 
                 }
@@ -212,6 +199,7 @@ pipeline {
             }
 
         }
+
 
 
 
@@ -229,9 +217,9 @@ pipeline {
 
                         env.EC2_IP = sh(
 
-                            script: "terraform output -raw public_ip",
+                            script:"terraform output -raw public_ip",
 
-                            returnStdout: true
+                            returnStdout:true
 
                         ).trim()
 
@@ -249,37 +237,59 @@ pipeline {
 
 
 
+
         stage('Wait For SSH') {
-    steps {
-        withCredentials([
-            sshUserPrivateKey(
-                credentialsId: 'ec2-ssh-key',
-                keyFileVariable: 'SSH_KEY'
-            )
-        ]) {
 
-            sh '''
-            chmod 600 $SSH_KEY
 
-            echo "Waiting for SSH..."
+            steps {
 
-            for i in {1..20}
-            do
-                ssh -o StrictHostKeyChecking=no \
+
+                withCredentials([
+
+                    sshUserPrivateKey(
+
+                        credentialsId:'ec2-ssh-key',
+
+                        keyFileVariable:'SSH_KEY'
+
+                    )
+
+                ]){
+
+
+                    sh '''
+
+                    chmod 600 $SSH_KEY
+
+
+                    for i in {1..20}
+                    do
+
+                    ssh \
+                    -o StrictHostKeyChecking=no \
                     -o ConnectTimeout=10 \
                     -i $SSH_KEY \
-                    ubuntu@$EC2_IP echo READY && exit 0
+                    ubuntu@$EC2_IP "echo READY" && exit 0
 
-                echo "SSH not ready. Retry $i/20"
-                sleep 15
-            done
 
-            echo "SSH failed after waiting"
-            exit 1
-            '''
+                    echo "Waiting SSH $i/20"
+
+                    sleep 15
+
+
+                    done
+
+
+                    exit 1
+
+                    '''
+
+                }
+
+            }
+
         }
-    }
-}
+
 
 
 
@@ -293,9 +303,9 @@ pipeline {
 
                     sshUserPrivateKey(
 
-                        credentialsId: "${EC2_SSH_CREDENTIAL}",
+                        credentialsId:'ec2-ssh-key',
 
-                        keyFileVariable: 'SSH_KEY'
+                        keyFileVariable:'SSH_KEY'
 
                     )
 
@@ -304,6 +314,7 @@ pipeline {
 
                     sh """
 
+
                     chmod 600 \$SSH_KEY
 
 
@@ -311,25 +322,31 @@ pipeline {
                     ssh \
                     -o StrictHostKeyChecking=no \
                     -i \$SSH_KEY \
-                    ${EC2_USER}@${EC2_IP} <<EOF
+                    ${EC2_USER}@${EC2_IP} <<'REMOTE'
 
 
-                    sudo apt update
+sudo apt update
 
-                    sudo apt install -y docker.io docker-compose-v2
-
-
-                    sudo systemctl enable docker
-
-                    sudo systemctl start docker
+sudo apt install -y docker.io docker-compose-v2
 
 
 
-                    mkdir -p ~/todo-app/${PROMETHEUS_DIR}
+sudo systemctl enable docker
+
+sudo systemctl start docker
 
 
 
-EOF
+# FIX DOCKER PERMISSION ISSUE
+
+sudo usermod -aG docker ubuntu
+
+
+
+mkdir -p ~/todo-app/${PROMETHEUS_DIR}
+
+
+REMOTE
 
 
 
@@ -349,18 +366,18 @@ EOF
 
 
 
+
                     ssh \
                     -o StrictHostKeyChecking=no \
                     -i \$SSH_KEY \
-                    ${EC2_USER}@${EC2_IP} <<EOF
+                    ${EC2_USER}@${EC2_IP} <<'REMOTE2'
+
+
+cd ~/todo-app
 
 
 
-                    cd ~/todo-app
-
-
-
-                    cat > .env <<ENV
+cat > .env <<EOF
 
 DOCKER_USERNAME=${DOCKER_USERNAME}
 
@@ -368,25 +385,34 @@ FRONTEND_IMAGE=${FRONTEND_IMAGE}
 
 BACKEND_IMAGE=${BACKEND_IMAGE}
 
-ENV
-
-
-
-                    docker compose down --remove-orphans || true
-
-
-                    docker compose pull
-
-
-                    docker compose up -d
-
-
-                    docker compose ps
-
-
 EOF
 
-                    """
+
+
+# refresh docker group permission
+
+newgrp docker <<EOF2
+
+
+docker compose down --remove-orphans || true
+
+
+docker compose pull
+
+
+docker compose up -d
+
+
+docker compose ps
+
+
+EOF2
+
+
+REMOTE2
+
+
+"""
 
                 }
 
@@ -408,9 +434,9 @@ EOF
 
                     sshUserPrivateKey(
 
-                        credentialsId: "${EC2_SSH_CREDENTIAL}",
+                        credentialsId:'ec2-ssh-key',
 
-                        keyFileVariable: 'SSH_KEY'
+                        keyFileVariable:'SSH_KEY'
 
                     )
 
@@ -419,14 +445,16 @@ EOF
 
                     sh """
 
+
                     ssh \
                     -o StrictHostKeyChecking=no \
                     -i \$SSH_KEY \
                     ${EC2_USER}@${EC2_IP} "
 
-                    docker ps
+                    sudo docker ps
 
                     "
+
 
                     """
 
@@ -435,6 +463,7 @@ EOF
             }
 
         }
+
 
 
     }
@@ -446,17 +475,19 @@ EOF
 
         success {
 
-            echo "Todo 3 Tier application deployed successfully"
+            echo "Todo 3 Tier Application Deployed Successfully"
 
         }
 
 
         failure {
 
-            echo "Deployment failed"
+            echo "Deployment Failed"
 
         }
 
+
     }
+
 
 }

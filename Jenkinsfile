@@ -4,31 +4,27 @@ pipeline {
 
     environment {
 
-        // ============================================================
-        // JENKINS CREDENTIALS / TOOLS
-        // ============================================================
+        // =====================================================
+        // Jenkins Credentials
+        // =====================================================
 
         EC2_SSH_CREDENTIAL = 'ec2-ssh-key'
+        DOCKER_CREDENTIALS = 'dockerhub-credentials'
 
-        // Name configured in:
-        // Manage Jenkins → System → SonarQube servers
-        SONARQUBE_SERVER = 'SonarQube'
+        // =====================================================
+        // Jenkins Tools
+        // =====================================================
 
-        // Name configured in:
-        // Manage Jenkins → Tools → SonarQube Scanner
-        SONAR_SCANNER = 'SonarScanner'
-
-        // Name configured in:
-        // Manage Jenkins → Tools → Dependency-Check
-        OWASP_INSTALLATION = 'OWASP-Dependency-Check'
+        OWASP_INSTALLATION = 'dependency-check'
+        SONARQUBE_SERVER   = 'SonarQube'
     }
 
 
     stages {
 
-        // ============================================================
-        // READ INPUT FILE
-        // ============================================================
+        // =====================================================
+        // 1. READ INPUT FILE
+        // =====================================================
 
         stage('Read Input File') {
 
@@ -37,99 +33,38 @@ pipeline {
                 script {
 
                     echo "=========================================="
-                    echo "Checking input properties file"
+                    echo "Reading input.properties"
                     echo "=========================================="
 
-
-                    if (!fileExists('jenkins-inputs.properties')) {
-
-                        error "jenkins-inputs.properties file not found!"
+                    if (!fileExists('input.properties')) {
+                        error "input.properties file not found!"
                     }
 
+                    def props = readProperties file: 'input.properties'
 
-                    def props = readProperties(
-                        file: 'jenkins-inputs.properties'
-                    )
+                    env.AWS_REGION_VALUE = props['AWS_REGION']
+                    env.DOCKER_USERNAME  = props['DOCKER_USERNAME']
 
+                    env.EC2_USER         = props['EC2_USER']
 
-                    // ------------------------------------------------
-                    // Read properties
-                    // ------------------------------------------------
+                    env.TERRAFORM_DIR    = props['TERRAFORM_DIR']
 
-                    env.AWS_REGION =
-                        props.get('aws_region')?.toString()
+                    env.FRONTEND_DIR     = props['FRONTEND_DIR']
+                    env.BACKEND_DIR      = props['BACKEND_DIR']
 
-                    env.DOCKER_USERNAME =
-                        props.get('docker_username')?.toString()
+                    env.FRONTEND_IMAGE   = props['FRONTEND_IMAGE']
+                    env.BACKEND_IMAGE    = props['BACKEND_IMAGE']
 
-                    env.EC2_USER =
-                        props.get('ec2_user')?.toString()
-
-                    env.TERRAFORM_DIR =
-                        props.get('terraform_directory')?.toString()
-
-                    env.FRONTEND_DIR =
-                        props.get('frontend_directory')?.toString()
-
-                    env.BACKEND_DIR =
-                        props.get('backend_directory')?.toString()
-
-                    env.FRONTEND_IMAGE =
-                        props.get('frontend_image')?.toString()
-
-                    env.BACKEND_IMAGE =
-                        props.get('backend_image')?.toString()
-
-                    env.AMI_ID =
-                        props.get('ami_id')?.toString()
-
-                    env.INSTANCE_TYPE =
-                        props.get('instance_type')?.toString()
-
-                    env.KEY_NAME =
-                        props.get('key_name')?.toString()
-
-
-                    // ------------------------------------------------
-                    // Validate required properties
-                    // ------------------------------------------------
-
-                    def requiredValues = [
-
-                        'AWS_REGION'      : env.AWS_REGION,
-                        'DOCKER_USERNAME' : env.DOCKER_USERNAME,
-                        'EC2_USER'        : env.EC2_USER,
-                        'TERRAFORM_DIR'   : env.TERRAFORM_DIR,
-                        'FRONTEND_DIR'    : env.FRONTEND_DIR,
-                        'BACKEND_DIR'     : env.BACKEND_DIR,
-                        'FRONTEND_IMAGE'  : env.FRONTEND_IMAGE,
-                        'BACKEND_IMAGE'   : env.BACKEND_IMAGE,
-                        'AMI_ID'          : env.AMI_ID,
-                        'INSTANCE_TYPE'   : env.INSTANCE_TYPE,
-                        'KEY_NAME'        : env.KEY_NAME
-                    ]
-
-
-                    requiredValues.each { name, value ->
-
-                        if (
-                            value == null ||
-                            value.trim() == ''
-                        ) {
-
-                            error(
-                                "Required property '${name}' is missing or empty!"
-                            )
-                        }
-                    }
+                    env.AMI_ID           = props['AMI_ID']
+                    env.INSTANCE_TYPE   = props['INSTANCE_TYPE']
+                    env.EC2_KEY_NAME    = props['EC2_KEY_NAME']
 
 
                     echo "=========================================="
-                    echo "Input file loaded successfully"
+                    echo "Input Configuration"
                     echo "=========================================="
 
-
-                    echo "AWS Region      : ${env.AWS_REGION}"
+                    echo "AWS Region      : ${env.AWS_REGION_VALUE}"
                     echo "Docker Username : ${env.DOCKER_USERNAME}"
                     echo "EC2 User        : ${env.EC2_USER}"
                     echo "Terraform Dir   : ${env.TERRAFORM_DIR}"
@@ -139,67 +74,88 @@ pipeline {
                     echo "Backend Image   : ${env.BACKEND_IMAGE}"
                     echo "AMI ID          : ${env.AMI_ID}"
                     echo "Instance Type   : ${env.INSTANCE_TYPE}"
-                    echo "EC2 Key Name    : ${env.KEY_NAME}"
+                    echo "EC2 Key Name    : ${env.EC2_KEY_NAME}"
 
-                    echo "=========================================="
+
+                    // =================================================
+                    // Validate required properties
+                    // =================================================
+
+                    def requiredProperties = [
+                        'AWS_REGION_VALUE',
+                        'DOCKER_USERNAME',
+                        'EC2_USER',
+                        'TERRAFORM_DIR',
+                        'FRONTEND_DIR',
+                        'BACKEND_DIR',
+                        'FRONTEND_IMAGE',
+                        'BACKEND_IMAGE',
+                        'AMI_ID',
+                        'INSTANCE_TYPE',
+                        'EC2_KEY_NAME'
+                    ]
+
+
+                    requiredProperties.each { variableName ->
+
+                        def value = env."${variableName}"
+
+                        if (!value ||
+                            value == 'null' ||
+                            value.trim() == '') {
+
+                            error(
+                                "Required property ${variableName} " +
+                                "is missing in input.properties"
+                            )
+                        }
+                    }
                 }
             }
         }
 
 
-        // ============================================================
-        // BASIC TEST
-        // ============================================================
+        // =====================================================
+        // 2. BASIC TESTS
+        // =====================================================
 
-        stage('Test') {
+        stage('Basic Tests') {
 
             steps {
 
                 sh '''
-
                     set -e
 
                     echo "=========================================="
                     echo "Running Basic Tests"
                     echo "=========================================="
 
-
                     echo "Checking frontend directory..."
-
                     test -d "$FRONTEND_DIR"
 
-
                     echo "Checking backend directory..."
-
                     test -d "$BACKEND_DIR"
 
-
                     echo "Checking Terraform directory..."
-
                     test -d "$TERRAFORM_DIR"
 
-
-                    echo "Checking Docker Compose file..."
-
+                    echo "Checking docker-compose.yml..."
                     test -f docker-compose.yml
 
-
-                    echo "Frontend directory  : OK"
-                    echo "Backend directory   : OK"
-                    echo "Terraform directory : OK"
-                    echo "Docker Compose file : OK"
-
+                    echo "Frontend directory   : OK"
+                    echo "Backend directory    : OK"
+                    echo "Terraform directory  : OK"
+                    echo "Docker Compose       : OK"
 
                     echo "All basic tests passed."
-
                 '''
             }
         }
 
 
-        // ============================================================
-        // OWASP DEPENDENCY CHECK
-        // ============================================================
+        // =====================================================
+        // 3. OWASP DEPENDENCY CHECK
+        // =====================================================
 
         stage('OWASP Dependency Check') {
 
@@ -209,83 +165,49 @@ pipeline {
                 echo "OWASP Dependency Check"
                 echo "=========================================="
 
-
                 dependencyCheck(
-
-                    odcInstallation:
-                    "${OWASP_INSTALLATION}",
-
+                    odcInstallation: 'dependency-check',
                     additionalArguments:
-                    '''
-                        --project "Todo Application"
-                        --scan .
-                        --format HTML
-                        --format XML
-                        --format JSON
-                        --out dependency-check-report
-                    '''
+                        '--scan . --format XML --format HTML'
                 )
-
 
                 dependencyCheckPublisher(
-
-                    pattern:
-                    'dependency-check-report/dependency-check-report.xml'
+                    pattern: '**/dependency-check-report.xml'
                 )
-
-
-                echo "OWASP Dependency Check completed."
             }
         }
 
 
-        // ============================================================
-        // SONARQUBE ANALYSIS
-        // ============================================================
+        // =====================================================
+        // 4. SONARQUBE ANALYSIS
+        // =====================================================
 
         stage('SonarQube Analysis') {
 
             steps {
 
                 echo "=========================================="
-                echo "SonarQube Code Analysis"
+                echo "SonarQube Analysis"
                 echo "=========================================="
 
-
-                withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                withSonarQubeEnv('SonarQube') {
 
                     sh '''
-
                         set -e
 
-
-                        echo "Checking SonarScanner..."
-
-                        sonar-scanner --version
-
-
-                        echo "Starting SonarQube analysis..."
-
-
                         sonar-scanner \
-                            -Dsonar.projectKey=todo-application \
-                            -Dsonar.projectName="Todo Application" \
-                            -Dsonar.sources=frontend,backend \
-                            -Dsonar.exclusions="**/node_modules/**,**/dist/**,**/build/**,**/coverage/**" \
-                            -Dsonar.sourceEncoding=UTF-8
-
-
-                        echo "SonarQube analysis completed."
-
+                          -Dsonar.projectKey=todo-3-tier \
+                          -Dsonar.projectName=todo-3-tier \
+                          -Dsonar.sources=.
                     '''
                 }
             }
         }
 
 
-        // ============================================================
-        // SONARQUBE QUALITY GATE
-        // ============================================================
+        // =====================================================
+        // 5. SONARQUBE QUALITY GATE
+        // =====================================================
 
         stage('SonarQube Quality Gate') {
 
@@ -294,7 +216,6 @@ pipeline {
                 echo "=========================================="
                 echo "Waiting for SonarQube Quality Gate"
                 echo "=========================================="
-
 
                 timeout(
                     time: 5,
@@ -305,907 +226,497 @@ pipeline {
                         abortPipeline: true
                     )
                 }
-
-
-                echo "SonarQube Quality Gate PASSED."
             }
         }
 
 
-        // ============================================================
-        // BUILD FRONTEND IMAGE
-        // ============================================================
+        // =====================================================
+        // 6. CHECK DOCKER
+        // =====================================================
+
+        stage('Check Docker') {
+
+            steps {
+
+                sh '''
+                    set -e
+
+                    echo "=========================================="
+                    echo "Checking Docker"
+                    echo "=========================================="
+
+                    docker --version
+
+                    docker info > /dev/null
+
+                    echo "Docker is working."
+                '''
+            }
+        }
+
+
+        // =====================================================
+        // 7. BUILD FRONTEND IMAGE
+        // =====================================================
 
         stage('Build Frontend Image') {
 
             steps {
 
                 sh '''
-
                     set -e
-
 
                     echo "=========================================="
                     echo "Building Frontend Docker Image"
                     echo "=========================================="
 
-
                     docker build \
-                        -t "$DOCKER_USERNAME/$FRONTEND_IMAGE:$BUILD_NUMBER" \
-                        "$FRONTEND_DIR"
-
-
-                    docker tag \
-                        "$DOCKER_USERNAME/$FRONTEND_IMAGE:$BUILD_NUMBER" \
-                        "$DOCKER_USERNAME/$FRONTEND_IMAGE:latest"
-
+                      -t ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest \
+                      ${FRONTEND_DIR}
 
                     echo "Frontend image built successfully."
 
-
-                    docker images |
-                        grep "$FRONTEND_IMAGE" || true
-
+                    docker images | grep "${FRONTEND_IMAGE}"
                 '''
             }
         }
 
 
-        // ============================================================
-        // BUILD BACKEND IMAGE
-        // ============================================================
+        // =====================================================
+        // 8. BUILD BACKEND IMAGE
+        // =====================================================
 
         stage('Build Backend Image') {
 
             steps {
 
                 sh '''
-
                     set -e
-
 
                     echo "=========================================="
                     echo "Building Backend Docker Image"
                     echo "=========================================="
 
-
                     docker build \
-                        -t "$DOCKER_USERNAME/$BACKEND_IMAGE:$BUILD_NUMBER" \
-                        "$BACKEND_DIR"
-
-
-                    docker tag \
-                        "$DOCKER_USERNAME/$BACKEND_IMAGE:$BUILD_NUMBER" \
-                        "$DOCKER_USERNAME/$BACKEND_IMAGE:latest"
-
+                      -t ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest \
+                      ${BACKEND_DIR}
 
                     echo "Backend image built successfully."
 
-
-                    docker images |
-                        grep "$BACKEND_IMAGE" || true
-
+                    docker images | grep "${BACKEND_IMAGE}"
                 '''
             }
         }
 
 
-        // ============================================================
-        // PUSH DOCKER IMAGES
-        // ============================================================
+        // =====================================================
+        // 9. CHECK TRIVY
+        // =====================================================
+
+        stage('Check Trivy') {
+
+            steps {
+
+                sh '''
+                    set -e
+
+                    echo "=========================================="
+                    echo "Checking Trivy"
+                    echo "=========================================="
+
+                    trivy --version
+
+                    echo "Trivy is available."
+                '''
+            }
+        }
+
+
+        // =====================================================
+        // 10. TRIVY FRONTEND SCAN
+        // =====================================================
+
+        stage('Trivy Frontend Scan') {
+
+            steps {
+
+                sh '''
+                    set -e
+
+                    echo "=========================================="
+                    echo "Trivy Frontend Image Scan"
+                    echo "=========================================="
+
+                    trivy image \
+                      --severity HIGH,CRITICAL \
+                      --exit-code 1 \
+                      ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
+
+                    echo "Frontend security scan passed."
+                '''
+            }
+        }
+
+
+        // =====================================================
+        // 11. TRIVY BACKEND SCAN
+        // =====================================================
+
+        stage('Trivy Backend Scan') {
+
+            steps {
+
+                sh '''
+                    set -e
+
+                    echo "=========================================="
+                    echo "Trivy Backend Image Scan"
+                    echo "=========================================="
+
+                    trivy image \
+                      --severity HIGH,CRITICAL \
+                      --exit-code 1 \
+                      ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
+
+                    echo "Backend security scan passed."
+                '''
+            }
+        }
+
+
+        // =====================================================
+        // 12. PUSH DOCKER IMAGES
+        // =====================================================
 
         stage('Push Docker Images') {
 
             steps {
 
                 withCredentials([
-
                     usernamePassword(
-
-                        credentialsId:
-                        'dockerhub-credentials',
-
-                        usernameVariable:
-                        'DH_USER',
-
-                        passwordVariable:
-                        'DH_TOKEN'
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASSWORD'
                     )
-
                 ]) {
 
                     sh '''
-
                         set -e
-
 
                         echo "=========================================="
                         echo "Docker Hub Login"
                         echo "=========================================="
 
-
-                        echo "$DH_TOKEN" |
-                            docker login \
-                            --username "$DH_USER" \
-                            --password-stdin
-
-
-                        echo "Docker Hub login successful."
+                        echo "$DOCKER_PASSWORD" | \
+                          docker login \
+                          --username "$DOCKER_USER" \
+                          --password-stdin
 
 
-                        echo "=========================================="
-                        echo "Pushing Frontend Images"
-                        echo "=========================================="
-
+                        echo "Pushing frontend image..."
 
                         docker push \
-                            "$DOCKER_USERNAME/$FRONTEND_IMAGE:$BUILD_NUMBER"
+                          ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
 
 
-                        docker push \
-                            "$DOCKER_USERNAME/$FRONTEND_IMAGE:latest"
-
-
-                        echo "Frontend images pushed successfully."
-
-
-                        echo "=========================================="
-                        echo "Pushing Backend Images"
-                        echo "=========================================="
-
+                        echo "Pushing backend image..."
 
                         docker push \
-                            "$DOCKER_USERNAME/$BACKEND_IMAGE:$BUILD_NUMBER"
-
-
-                        docker push \
-                            "$DOCKER_USERNAME/$BACKEND_IMAGE:latest"
-
-
-                        echo "Backend images pushed successfully."
+                          ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
 
 
                         docker logout
 
-
-                        echo "=========================================="
                         echo "Docker images pushed successfully."
-                        echo "=========================================="
-
                     '''
                 }
             }
         }
 
 
-        // ============================================================
-        // TERRAFORM INIT
-        // ============================================================
+        // =====================================================
+        // 13. TERRAFORM INIT
+        // =====================================================
 
         stage('Terraform Init') {
 
             steps {
 
-                dir("${env.TERRAFORM_DIR}") {
+                dir("${TERRAFORM_DIR}") {
 
                     sh '''
-
                         set -e
-
 
                         echo "=========================================="
                         echo "Terraform Init"
                         echo "=========================================="
 
-
                         terraform init
-
-
-                        echo "Terraform init completed successfully."
-
                     '''
                 }
             }
         }
 
 
-        // ============================================================
-        // TERRAFORM VALIDATE
-        // ============================================================
+        // =====================================================
+        // 14. TERRAFORM VALIDATE
+        // =====================================================
 
         stage('Terraform Validate') {
 
             steps {
 
-                dir("${env.TERRAFORM_DIR}") {
+                dir("${TERRAFORM_DIR}") {
 
                     sh '''
-
                         set -e
-
 
                         echo "=========================================="
                         echo "Terraform Validate"
                         echo "=========================================="
 
-
                         terraform validate
-
-
-                        echo "Terraform validation successful."
-
                     '''
                 }
             }
         }
 
 
-        // ============================================================
-        // TERRAFORM PLAN
-        // ============================================================
+        // =====================================================
+        // 15. TERRAFORM PLAN
+        // =====================================================
 
         stage('Terraform Plan') {
 
             steps {
 
-                dir("${env.TERRAFORM_DIR}") {
+                dir("${TERRAFORM_DIR}") {
 
                     sh '''
-
                         set -e
-
 
                         echo "=========================================="
                         echo "Terraform Plan"
                         echo "=========================================="
 
-
                         terraform plan \
-                            -var="aws_region=$AWS_REGION" \
-                            -var="ami_id=$AMI_ID" \
-                            -var="instance_type=$INSTANCE_TYPE" \
-                            -var="key_name=$KEY_NAME"
-
-
-                        echo "Terraform plan completed successfully."
-
+                          -out=tfplan
                     '''
                 }
             }
         }
 
 
-        // ============================================================
-        // TERRAFORM APPLY
-        // ============================================================
+        // =====================================================
+        // 16. TERRAFORM APPLY
+        // =====================================================
 
         stage('Terraform Apply') {
 
             steps {
 
-                dir("${env.TERRAFORM_DIR}") {
+                dir("${TERRAFORM_DIR}") {
 
                     sh '''
-
                         set -e
-
 
                         echo "=========================================="
                         echo "Terraform Apply"
                         echo "=========================================="
 
-
                         terraform apply \
-                            -auto-approve \
-                            -var="aws_region=$AWS_REGION" \
-                            -var="ami_id=$AMI_ID" \
-                            -var="instance_type=$INSTANCE_TYPE" \
-                            -var="key_name=$KEY_NAME"
-
-
-                        echo "Terraform apply completed successfully."
-
+                          -auto-approve \
+                          tfplan
                     '''
                 }
             }
         }
 
 
-        // ============================================================
-        // GET EC2 PUBLIC IP
-        // ============================================================
+        // =====================================================
+        // 17. GET EC2 IP
+        // =====================================================
 
         stage('Get EC2 IP') {
 
             steps {
 
-                dir("${env.TERRAFORM_DIR}") {
+                dir("${TERRAFORM_DIR}") {
 
                     script {
 
-                        echo "=========================================="
-                        echo "Getting EC2 Public IP"
-                        echo "=========================================="
-
-
-                        def ip = sh(
-
-                            script:
-                            'terraform output -raw public_ip',
-
-                            returnStdout:
-                            true
-
+                        env.EC2_IP = sh(
+                            script: 'terraform output -raw public_ip',
+                            returnStdout: true
                         ).trim()
 
-
-                        if (!ip) {
-
-                            error(
-                                "Terraform did not return public_ip!"
-                            )
+                        if (!env.EC2_IP) {
+                            error "EC2 public IP was not returned by Terraform."
                         }
 
+                        echo "=========================================="
+                        echo "EC2 Information"
+                        echo "=========================================="
 
-                        env.EC2_IP = ip
-
-
-                        echo "EC2 Public IP: ${env.EC2_IP}"
+                        echo "EC2 Public IP : ${env.EC2_IP}"
                     }
                 }
             }
         }
 
 
-        // ============================================================
-        // WAIT FOR EC2 SSH
-        // ============================================================
+        // =====================================================
+        // 18. WAIT FOR EC2 SSH
+        // =====================================================
 
         stage('Wait For EC2') {
 
             steps {
 
-                withCredentials([
+                script {
 
-                    sshUserPrivateKey(
+                    echo "=========================================="
+                    echo "Waiting for EC2 SSH"
+                    echo "=========================================="
 
-                        credentialsId:
-                        "${env.EC2_SSH_CREDENTIAL}",
+                    retry(10) {
 
-                        keyFileVariable:
-                        'SSH_KEY'
-                    )
+                        sleep 15
 
-                ]) {
+                        withCredentials([
+                            sshUserPrivateKey(
+                                credentialsId: 'ec2-ssh-key',
+                                keyFileVariable: 'SSH_KEY'
+                            )
+                        ]) {
 
-                    sh '''
+                            sh '''
+                                chmod 600 "$SSH_KEY"
 
-                        set -e
-
-
-                        echo "=========================================="
-                        echo "Waiting For EC2 SSH"
-                        echo "=========================================="
-
-
-                        chmod 600 "$SSH_KEY"
-
-
-                        for i in $(seq 1 12)
-                        do
-
-                            echo "SSH attempt $i..."
-
-
-                            if ssh \
-                                -i "$SSH_KEY" \
-                                -o StrictHostKeyChecking=no \
-                                -o UserKnownHostsFile=/dev/null \
-                                -o ConnectTimeout=10 \
-                                "$EC2_USER@$EC2_IP" \
-                                "echo SSH connection successful"
-                            then
-
-                                echo "EC2 SSH is ready."
-
-                                exit 0
-
-                            fi
-
-
-                            echo "EC2 not ready."
-
-                            echo "Waiting 10 seconds..."
-
-                            sleep 10
-
-                        done
-
-
-                        echo "Unable to connect to EC2 using SSH."
-
-                        exit 1
-
-                    '''
+                                ssh \
+                                  -o StrictHostKeyChecking=no \
+                                  -o ConnectTimeout=10 \
+                                  -i "$SSH_KEY" \
+                                  ${EC2_USER}@${EC2_IP} \
+                                  "echo SSH connection successful"
+                            '''
+                        }
+                    }
                 }
             }
         }
 
 
-        // ============================================================
-        // DEPLOY APPLICATION
-        // ============================================================
+        // =====================================================
+        // 19. DEPLOY APPLICATION
+        // =====================================================
 
         stage('Deploy Application') {
 
             steps {
 
                 withCredentials([
-
                     sshUserPrivateKey(
-
-                        credentialsId:
-                        "${env.EC2_SSH_CREDENTIAL}",
-
-                        keyFileVariable:
-                        'SSH_KEY'
+                        credentialsId: 'ec2-ssh-key',
+                        keyFileVariable: 'SSH_KEY'
                     )
-
                 ]) {
 
                     sh '''
-
                         set -e
 
-
                         echo "=========================================="
-                        echo "Deploy Application"
+                        echo "Deploying Application"
                         echo "=========================================="
-
-
-                        echo "EC2 IP   : $EC2_IP"
-                        echo "EC2 User : $EC2_USER"
-
 
                         chmod 600 "$SSH_KEY"
 
 
-                        # =================================================
-                        # CHECK / INSTALL DOCKER
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Checking Docker"
-                        echo "=========================================="
-
-
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" '
-
-                                set -e
-
-
-                                if ! command -v docker >/dev/null 2>&1
-                                then
-
-                                    echo "Docker is not installed."
-
-                                    echo "Installing Docker..."
-
-
-                                    sudo apt-get update
-
-                                    sudo apt-get install -y docker.io
-
-                                    sudo systemctl enable docker
-
-                                    sudo systemctl start docker
-
-                                else
-
-                                    echo "Docker already installed."
-
-                                fi
-
-
-                                sudo docker --version
-
-                            '
-
-
-                        # =================================================
-                        # CHECK DOCKER COMPOSE
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Checking Docker Compose"
-                        echo "=========================================="
-
-
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" '
-
-                                set -e
-
-
-                                if ! sudo docker compose version >/dev/null 2>&1
-                                then
-
-                                    echo "Docker Compose plugin not found."
-
-                                    sudo apt-get update
-
-
-                                    if apt-cache show docker-compose-v2 >/dev/null 2>&1
-                                    then
-
-                                        sudo apt-get install -y docker-compose-v2
-
-                                    elif apt-cache show docker-compose-plugin >/dev/null 2>&1
-                                    then
-
-                                        sudo apt-get install -y docker-compose-plugin
-
-                                    else
-
-                                        echo "Docker Compose package not available."
-
-                                        exit 1
-
-                                    fi
-
-                                else
-
-                                    echo "Docker Compose already installed."
-
-                                fi
-
-
-                                sudo docker compose version
-
-                            '
-
-
-                        # =================================================
-                        # CREATE APPLICATION DIRECTORY
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Creating Application Directory"
-                        echo "=========================================="
-
-
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" \
-                            "mkdir -p ~/todo-app"
-
-
-                        # =================================================
-                        # COPY DOCKER COMPOSE
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Copying Docker Compose File"
-                        echo "=========================================="
-
+                        echo "Copying docker-compose.yml..."
 
                         scp \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            docker-compose.yml \
-                            "$EC2_USER@$EC2_IP:~/todo-app/docker-compose.yml"
+                          -o StrictHostKeyChecking=no \
+                          -i "$SSH_KEY" \
+                          docker-compose.yml \
+                          ${EC2_USER}@${EC2_IP}:/home/${EC2_USER}/
 
 
-                        # =================================================
-                        # CREATE .ENV
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Creating .env File"
-                        echo "=========================================="
-
-
-                        printf '%s\\n' \
-                            "DOCKER_USERNAME=$DOCKER_USERNAME" \
-                            "FRONTEND_IMAGE=$FRONTEND_IMAGE" \
-                            "BACKEND_IMAGE=$BACKEND_IMAGE" \
-                        | ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" \
-                            "cat > ~/todo-app/.env"
-
-
-                        # =================================================
-                        # VALIDATE COMPOSE
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Validating Docker Compose"
-                        echo "=========================================="
-
+                        echo "Connecting to EC2..."
 
                         ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" '
+                          -o StrictHostKeyChecking=no \
+                          -i "$SSH_KEY" \
+                          ${EC2_USER}@${EC2_IP} << EOF
 
-                                set -e
+                        set -e
 
-                                cd ~/todo-app
+                        echo "Installing Docker Compose if required..."
 
-                                sudo docker compose config
-
-                            '
+                        docker --version
+                        docker compose version
 
 
-                        # =================================================
-                        # PULL IMAGES
-                        # =================================================
+                        echo "Pulling frontend image..."
 
-                        echo "=========================================="
-                        echo "Pulling Docker Images"
-                        echo "=========================================="
+                        docker pull \
+                          ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
 
 
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" '
+                        echo "Pulling backend image..."
 
-                                set -e
-
-                                cd ~/todo-app
-
-                                sudo docker compose pull
-
-                            '
+                        docker pull \
+                          ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
 
 
-                        # =================================================
-                        # STOP OLD CONTAINERS
-                        # =================================================
+                        echo "Stopping old containers..."
 
-                        echo "=========================================="
-                        echo "Stopping Existing Containers"
-                        echo "=========================================="
+                        docker compose down || true
 
 
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" '
+                        echo "Starting application..."
 
-                                cd ~/todo-app
-
-                                sudo docker compose down || true
-
-                            '
+                        docker compose up -d
 
 
-                        # =================================================
-                        # START APPLICATION
-                        # =================================================
+                        echo "Running containers:"
 
-                        echo "=========================================="
-                        echo "Starting Application"
-                        echo "=========================================="
+                        docker ps
 
-
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" '
-
-                                set -e
-
-                                cd ~/todo-app
-
-                                sudo docker compose up -d
-
-                            '
-
-
-                        # =================================================
-                        # SHOW STATUS
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Application Status"
-                        echo "=========================================="
-
-
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" '
-
-                                cd ~/todo-app
-
-                                sudo docker compose ps
-
-                            '
-
-
-                        echo "=========================================="
-                        echo "Application Deployment Completed"
-                        echo "=========================================="
-
+                        EOF
                     '''
                 }
             }
         }
 
 
-        // ============================================================
-        // VERIFY APPLICATION
-        // ============================================================
+        // =====================================================
+        // 20. VERIFY APPLICATION
+        // =====================================================
 
         stage('Verify Application') {
 
             steps {
 
-                withCredentials([
+                script {
 
-                    sshUserPrivateKey(
+                    echo "=========================================="
+                    echo "Verifying Application"
+                    echo "=========================================="
 
-                        credentialsId:
-                        "${env.EC2_SSH_CREDENTIAL}",
-
-                        keyFileVariable:
-                        'SSH_KEY'
-                    )
-
-                ]) {
+                    sleep 20
 
                     sh '''
-
                         set -e
 
-
-                        echo "=========================================="
-                        echo "Application Verification"
-                        echo "=========================================="
-
-
-                        chmod 600 "$SSH_KEY"
-
-
-                        # =================================================
-                        # DOCKER COMPOSE STATUS
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Docker Compose Status"
-                        echo "=========================================="
-
-
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" \
-                            "cd ~/todo-app && sudo docker compose ps"
-
-
-                        # =================================================
-                        # CHECK FRONTEND
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Checking Frontend"
-                        echo "=========================================="
-
-
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" \
-                            "
-
-                            cd ~/todo-app
-
-                            sudo docker compose ps \
-                                --services \
-                                --filter status=running \
-                            | grep -q '^frontend$'
-
-                            "
-
-
-                        echo "Frontend service is running."
-
-
-                        # =================================================
-                        # CHECK BACKEND
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Checking Backend"
-                        echo "=========================================="
-
-
-                        ssh \
-                            -i "$SSH_KEY" \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "$EC2_USER@$EC2_IP" \
-                            "
-
-                            cd ~/todo-app
-
-                            sudo docker compose ps \
-                                --services \
-                                --filter status=running \
-                            | grep -q '^backend$'
-
-                            "
-
-
-                        echo "Backend service is running."
-
-
-                        # =================================================
-                        # CHECK FRONTEND HTTP
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Testing Frontend"
-                        echo "=========================================="
-
+                        echo "Testing application..."
 
                         curl \
-                            --fail \
-                            --silent \
-                            --show-error \
-                            --max-time 15 \
-                            "http://${EC2_IP}:8080"
+                          --fail \
+                          --connect-timeout 10 \
+                          http://${EC2_IP}
 
-
-                        echo "Frontend is responding successfully."
-
-
-                        # =================================================
-                        # CHECK BACKEND HEALTH
-                        # =================================================
-
-                        echo "=========================================="
-                        echo "Testing Backend"
-                        echo "=========================================="
-
-
-                        curl \
-                            --fail \
-                            --silent \
-                            --show-error \
-                            --max-time 15 \
-                            "http://${EC2_IP}:3000/health"
-
-
-                        echo "Backend is responding successfully."
-
-
-                        echo "=========================================="
-                        echo "APPLICATION VERIFICATION SUCCESSFUL"
-                        echo "=========================================="
-
+                        echo ""
+                        echo "Application verification successful."
                     '''
                 }
             }
@@ -1213,9 +724,9 @@ pipeline {
     }
 
 
-    // ================================================================
+    // =========================================================
     // POST ACTIONS
-    // ================================================================
+    // =========================================================
 
     post {
 
@@ -1223,41 +734,11 @@ pipeline {
 
             echo """
 ==================================================
-              PIPELINE SUCCESS
+              PIPELINE SUCCESSFUL
 ==================================================
 
-Todo application deployed successfully.
-
-Security / Quality checks:
-
-- OWASP Dependency Check : PASSED
-- SonarQube Analysis     : PASSED
-- SonarQube Quality Gate : PASSED
-
-Docker:
-
-- Frontend image built   : SUCCESS
-- Backend image built    : SUCCESS
-- Docker Hub push        : SUCCESS
-
-Infrastructure:
-
-- Terraform              : SUCCESS
-- EC2 deployment         : SUCCESS
-
-Application:
-
-- Frontend               : SUCCESS
-- Backend                : SUCCESS
-
-EC2 IP:
-${env.EC2_IP}
-
-Frontend:
-http://${env.EC2_IP}:8080
-
-Backend:
-http://${env.EC2_IP}:3000
+Build Number : ${BUILD_NUMBER}
+EC2 IP       : ${env.EC2_IP}
 
 ==================================================
 """
@@ -1271,21 +752,10 @@ http://${env.EC2_IP}:3000
               PIPELINE FAILED
 ==================================================
 
-One or more stages failed.
+Build Number : ${BUILD_NUMBER}
+EC2 IP       : ${env.EC2_IP}
 
 Check the failed stage in the Jenkins console.
-
-Possible failure areas:
-
-- OWASP Dependency Check
-- SonarQube Analysis
-- SonarQube Quality Gate
-- Docker Build
-- Docker Hub Push
-- Terraform
-- EC2 SSH
-- Docker Compose
-- Application Verification
 
 ==================================================
 """
@@ -1294,19 +764,7 @@ Possible failure areas:
 
         always {
 
-            echo """
-==================================================
-              BUILD INFORMATION
-==================================================
-
-Build Number:
-${env.BUILD_NUMBER}
-
-EC2 IP:
-${env.EC2_IP}
-
-==================================================
-"""
+            echo "Pipeline execution completed."
         }
     }
 }

@@ -82,8 +82,15 @@ resource "aws_security_group" "my_sg" {
   }
  ingress {
     description = "HTTP"
-    from_port   = 3000
-    to_port     = 3000
+    from_port   = 3001
+    to_port     = 3001
+    protocol    = "tcp"
+    cidr_blocks = [var.internet_cidr]
+  }
+ingress {
+    description = "HTTP"
+    from_port   = 9090
+    to_port     = 9090
     protocol    = "tcp"
     cidr_blocks = [var.internet_cidr]
   }
@@ -96,12 +103,26 @@ resource "aws_security_group" "my_sg" {
     protocol    = "tcp"
     cidr_blocks = [var.internet_cidr]
   }
+ingress {
+    description = "HTTP"
+    from_port   = 8001
+    to_port     = 8001
+    protocol    = "tcp"
+    cidr_blocks = [var.internet_cidr]
+  }
 
   # Outbound
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
+    cidr_blocks = [var.internet_cidr]
+  }
+ingress {
+    description = "HTTP"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
     cidr_blocks = [var.internet_cidr]
   }
 

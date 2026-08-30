@@ -148,6 +148,10 @@ resource "aws_instance" "my_ec2" {
   ]
 
   key_name = aws_key_pair.deployer.key_name
+   root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+  }
 
   tags = {
     Name = var.ec2_name

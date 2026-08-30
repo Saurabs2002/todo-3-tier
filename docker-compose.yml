@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
 
   # =====================================================
@@ -6,89 +8,60 @@ services:
   postgres:
     image: postgres:16
     container_name: todo-postgres
-
     environment:
       POSTGRES_DB: todo_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U postgres -d todo_db"
-        ]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d todo_db"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-
     volumes:
       - postgres-data:/var/lib/postgresql/data
-
     networks:
       - todo-network
-
 
   # =====================================================
   # BACKEND
   # =====================================================
   backend:
-    build:
-      context: ./backend
-
+    image: ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
     container_name: todo-backend
-
     ports:
       - "3000:3000"
-
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: todo_db
-
     depends_on:
       postgres:
         condition: service_healthy
-
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
-        ]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
-
     networks:
       - todo-network
-
 
   # =====================================================
   # FRONTEND
   # =====================================================
   frontend:
-    build:
-      context: ./frontend
-
+    image: ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
     container_name: todo-frontend
-
     ports:
       - "8080:80"
-
     depends_on:
       backend:
         condition: service_healthy
-
     networks:
       - todo-network
-
 
   # =====================================================
   # CADVISOR
@@ -96,19 +69,15 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: todo-cadvisor
-
     ports:
       - "8081:8080"
-
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
-
     networks:
       - todo-network
-
 
   # =====================================================
   # PROMETHEUS
@@ -116,24 +85,18 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: todo-prometheus
-
     ports:
       - "9090:9090"
-
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
-
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-
     depends_on:
       - cadvisor
-
     networks:
       - todo-network
-
 
   # =====================================================
   # GRAFANA
@@ -141,47 +104,17 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: todo-grafana
-
     ports:
       - "3001:3000"
-
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
-
     volumes:
       - grafana-data:/var/lib/grafana
-
     depends_on:
       - prometheus
-
     networks:
       - todo-network
-
-
-  # =====================================================
-  # SONARQUBE
-  # =====================================================
-  sonarqube:
-    image: sonarqube:community
-    container_name: todo-sonarqube
-
-    ports:
-      - "9000:9000"
-
-    environment:
-      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
-
-    volumes:
-      - sonarqube-data:/opt/sonarqube/data
-      - sonarqube-logs:/opt/sonarqube/logs
-      - sonarqube-extensions:/opt/sonarqube/extensions
-
-    restart: unless-stopped
-
-    networks:
-      - todo-network
-
 
 # =====================================================
 # NETWORK
@@ -190,20 +123,10 @@ networks:
   todo-network:
     driver: bridge
 
-
 # =====================================================
 # VOLUMES
 # =====================================================
 volumes:
-
   postgres-data:
-
   prometheus-data:
-
   grafana-data:
-
-  sonarqube-data:
-
-  sonarqube-logs:
-
-  sonarqube-extensions:

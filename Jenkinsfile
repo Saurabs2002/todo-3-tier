@@ -8,16 +8,15 @@ pipeline {
         // Jenkins Credentials
         // =====================================================
 
-        EC2_SSH_CREDENTIAL = 'ec2-ssh-key'
         DOCKER_CREDENTIALS = 'dockerhub-credentials'
+        EC2_SSH_CREDENTIAL = 'ec2-ssh-key'
 
 
         // =====================================================
-        // Jenkins Tool Configuration
+        // SonarQube Jenkins Server Name
         // =====================================================
 
-        OWASP_INSTALLATION = 'dependency-check'
-        SONARQUBE_SERVER   = 'SonarQube'
+        SONARQUBE_SERVER = 'SonarQube'
     }
 
 
@@ -25,7 +24,7 @@ pipeline {
 
 
         // =====================================================
-        // 1. READ JENKINS INPUT FILE
+        // 1. READ INPUT FILE
         // =====================================================
 
         stage('Read Input File') {
@@ -38,14 +37,12 @@ pipeline {
                     echo "Reading jenkins-inputs.properties"
                     echo "=========================================="
 
+
                     if (!fileExists('jenkins-inputs.properties')) {
 
-                        error '''
-jenkins-inputs.properties file not found!
-
-Make sure the file exists in the root
-of your GitHub repository.
-'''
+                        error(
+                            'jenkins-inputs.properties file not found!'
+                        )
                     }
 
 
@@ -54,67 +51,68 @@ of your GitHub repository.
                     )
 
 
-                    // =================================================
-                    // Read properties
-                    // =================================================
+                    // -------------------------------------------------
+                    // Read properties from file
+                    // -------------------------------------------------
 
-                    env.AWS_REGION_VALUE = props['aws_region']
+                    env.AWS_REGION_VALUE =
+                        props['aws_region']
 
-                    env.DOCKER_USERNAME  = props['docker_username']
+                    env.DOCKER_USERNAME =
+                        props['docker_username']
 
-                    env.EC2_USER         = props['ec2_user']
+                    env.EC2_USER =
+                        props['ec2_user']
 
-                    env.TERRAFORM_DIR    = props['terraform_directory']
+                    env.TERRAFORM_DIR =
+                        props['terraform_directory']
 
-                    env.FRONTEND_DIR     = props['frontend_directory']
+                    env.FRONTEND_DIR =
+                        props['frontend_directory']
 
-                    env.BACKEND_DIR      = props['backend_directory']
+                    env.BACKEND_DIR =
+                        props['backend_directory']
 
-                    env.FRONTEND_IMAGE   = props['frontend_image']
+                    env.FRONTEND_IMAGE =
+                        props['frontend_image']
 
-                    env.BACKEND_IMAGE    = props['backend_image']
+                    env.BACKEND_IMAGE =
+                        props['backend_image']
 
-                    env.AMI_ID           = props['ami_id']
+                    env.AMI_ID =
+                        props['ami_id']
 
-                    env.INSTANCE_TYPE   = props['instance_type']
+                    env.INSTANCE_TYPE =
+                        props['instance_type']
 
-                    env.EC2_KEY_NAME    = props['key_value']
+                    env.EC2_KEY_NAME =
+                        props['key_value']
 
 
-                    // =================================================
+                    // -------------------------------------------------
                     // Display configuration
-                    // =================================================
+                    // -------------------------------------------------
 
                     echo "=========================================="
                     echo "Input Configuration"
                     echo "=========================================="
 
                     echo "AWS Region      : ${env.AWS_REGION_VALUE}"
-
                     echo "Docker Username : ${env.DOCKER_USERNAME}"
-
                     echo "EC2 User        : ${env.EC2_USER}"
-
                     echo "Terraform Dir   : ${env.TERRAFORM_DIR}"
-
                     echo "Frontend Dir    : ${env.FRONTEND_DIR}"
-
                     echo "Backend Dir     : ${env.BACKEND_DIR}"
-
                     echo "Frontend Image  : ${env.FRONTEND_IMAGE}"
-
                     echo "Backend Image   : ${env.BACKEND_IMAGE}"
-
                     echo "AMI ID          : ${env.AMI_ID}"
-
                     echo "Instance Type   : ${env.INSTANCE_TYPE}"
-
                     echo "EC2 Key Name    : ${env.EC2_KEY_NAME}"
 
 
-                    // =================================================
+                    // -------------------------------------------------
                     // Validate properties
-                    // =================================================
+                    // -------------------------------------------------
 
                     def requiredProperties = [
 
@@ -142,15 +140,15 @@ of your GitHub repository.
                             value.trim() == '') {
 
                             error(
-                                "${variableName} is missing " +
-                                "in jenkins-inputs.properties"
+                                "${variableName} is missing in " +
+                                "jenkins-inputs.properties"
                             )
                         }
                     }
 
 
                     echo "=========================================="
-                    echo "Input file loaded successfully."
+                    echo "Input file loaded successfully"
                     echo "=========================================="
                 }
             }
@@ -166,7 +164,6 @@ of your GitHub repository.
             steps {
 
                 sh '''
-
                     set -e
 
                     echo "=========================================="
@@ -174,42 +171,75 @@ of your GitHub repository.
                     echo "=========================================="
 
 
-                    echo "Checking frontend directory..."
-
                     test -d "$FRONTEND_DIR"
 
+                    echo "Frontend directory : OK"
 
-                    echo "Checking backend directory..."
 
                     test -d "$BACKEND_DIR"
 
+                    echo "Backend directory  : OK"
 
-                    echo "Checking Terraform directory..."
 
                     test -d "$TERRAFORM_DIR"
 
+                    echo "Terraform directory : OK"
 
-                    echo "Checking Docker Compose..."
 
                     test -f docker-compose.yml
 
+                    echo "Docker Compose : OK"
 
-                    echo ""
-                    echo "Frontend directory   : OK"
-                    echo "Backend directory    : OK"
-                    echo "Terraform directory  : OK"
-                    echo "Docker Compose       : OK"
 
                     echo ""
                     echo "All basic tests passed."
-
                 '''
             }
         }
 
 
         // =====================================================
-        // 3. OWASP DEPENDENCY CHECK
+        // 3. CHECK OWASP
+        // =====================================================
+
+        stage('Check OWASP Dependency Check') {
+
+            steps {
+
+                sh '''
+                    set -e
+
+                    echo "=========================================="
+                    echo "Checking OWASP Dependency Check"
+                    echo "=========================================="
+
+
+                    if command -v dependency-check.sh >/dev/null 2>&1
+                    then
+
+                        echo "dependency-check.sh found."
+
+                        dependency-check.sh --version
+
+                    else
+
+                        echo "ERROR:"
+                        echo "dependency-check.sh is not installed."
+                        echo ""
+                        echo "Install OWASP Dependency-Check CLI"
+                        echo "on the Jenkins agent or configure"
+                        echo "the Jenkins Dependency-Check tool."
+
+                        exit 1
+
+                    fi
+                '''
+            }
+        }
+
+
+        // =====================================================
+        // 4. OWASP DEPENDENCY CHECK
         // =====================================================
 
         stage('OWASP Dependency Check') {
@@ -217,32 +247,37 @@ of your GitHub repository.
             steps {
 
                 echo "=========================================="
-
                 echo "OWASP Dependency Check"
-
                 echo "=========================================="
 
 
-                dependencyCheck(
+                sh '''
+                    set -e
 
-                    odcInstallation: 'dependency-check',
 
-                    additionalArguments:
-                        '--scan . --format XML --format HTML'
-                )
+                    dependency-check.sh \
+                        --scan . \
+                        --format XML \
+                        --format HTML \
+                        --out dependency-check-report
+
+
+                    echo ""
+                    echo "OWASP scan completed."
+                '''
 
 
                 dependencyCheckPublisher(
 
                     pattern:
-                        '**/dependency-check-report.xml'
+                        'dependency-check-report/dependency-check-report.xml'
                 )
             }
         }
 
 
         // =====================================================
-        // 4. SONARQUBE ANALYSIS
+        // 5. SONARQUBE ANALYSIS
         // =====================================================
 
         stage('SonarQube Analysis') {
@@ -250,27 +285,30 @@ of your GitHub repository.
             steps {
 
                 echo "=========================================="
-
                 echo "SonarQube Analysis"
-
                 echo "=========================================="
 
 
-                withSonarQubeEnv('SonarQube') {
+                withSonarQubeEnv("${SONARQUBE_SERVER}") {
 
                     sh '''
-
                         set -e
 
 
+                        if ! command -v sonar-scanner >/dev/null 2>&1
+                        then
+
+                            echo "ERROR: sonar-scanner is not installed."
+
+                            exit 1
+
+                        fi
+
+
                         sonar-scanner \
-
-                          -Dsonar.projectKey=todo-3-tier \
-
-                          -Dsonar.projectName=todo-3-tier \
-
-                          -Dsonar.sources=.
-
+                            -Dsonar.projectKey=todo-3-tier \
+                            -Dsonar.projectName=todo-3-tier \
+                            -Dsonar.sources=.
                     '''
                 }
             }
@@ -278,7 +316,7 @@ of your GitHub repository.
 
 
         // =====================================================
-        // 5. SONARQUBE QUALITY GATE
+        // 6. SONARQUBE QUALITY GATE
         // =====================================================
 
         stage('SonarQube Quality Gate') {
@@ -286,9 +324,7 @@ of your GitHub repository.
             steps {
 
                 echo "=========================================="
-
-                echo "Waiting for SonarQube Quality Gate"
-
+                echo "SonarQube Quality Gate"
                 echo "=========================================="
 
 
@@ -306,7 +342,7 @@ of your GitHub repository.
 
 
         // =====================================================
-        // 6. CHECK DOCKER
+        // 7. CHECK DOCKER
         // =====================================================
 
         stage('Check Docker') {
@@ -314,8 +350,8 @@ of your GitHub repository.
             steps {
 
                 sh '''
-
                     set -e
+
 
                     echo "=========================================="
                     echo "Checking Docker"
@@ -324,18 +360,18 @@ of your GitHub repository.
 
                     docker --version
 
-                    docker info > /dev/null
+
+                    docker info >/dev/null
 
 
-                    echo "Docker is working."
-
+                    echo "Docker is working successfully."
                 '''
             }
         }
 
 
         // =====================================================
-        // 7. BUILD FRONTEND IMAGE
+        // 8. BUILD FRONTEND IMAGE
         // =====================================================
 
         stage('Build Frontend Image') {
@@ -343,33 +379,27 @@ of your GitHub repository.
             steps {
 
                 sh '''
-
                     set -e
 
 
                     echo "=========================================="
-
-                    echo "Building Frontend Docker Image"
-
+                    echo "Building Frontend Image"
                     echo "=========================================="
 
 
                     docker build \
-
-                      -t ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest \
-
-                      ${FRONTEND_DIR}
+                        -t ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest \
+                        ${FRONTEND_DIR}
 
 
-                    echo "Frontend image built successfully."
-
+                    echo "Frontend image created successfully."
                 '''
             }
         }
 
 
         // =====================================================
-        // 8. BUILD BACKEND IMAGE
+        // 9. BUILD BACKEND IMAGE
         // =====================================================
 
         stage('Build Backend Image') {
@@ -377,33 +407,27 @@ of your GitHub repository.
             steps {
 
                 sh '''
-
                     set -e
 
 
                     echo "=========================================="
-
-                    echo "Building Backend Docker Image"
-
+                    echo "Building Backend Image"
                     echo "=========================================="
 
 
                     docker build \
-
-                      -t ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest \
-
-                      ${BACKEND_DIR}
+                        -t ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest \
+                        ${BACKEND_DIR}
 
 
-                    echo "Backend image built successfully."
-
+                    echo "Backend image created successfully."
                 '''
             }
         }
 
 
         // =====================================================
-        // 9. CHECK TRIVY
+        // 10. CHECK TRIVY
         // =====================================================
 
         stage('Check Trivy') {
@@ -411,29 +435,35 @@ of your GitHub repository.
             steps {
 
                 sh '''
-
                     set -e
 
 
                     echo "=========================================="
-
                     echo "Checking Trivy"
-
                     echo "=========================================="
+
+
+                    if ! command -v trivy >/dev/null 2>&1
+                    then
+
+                        echo "ERROR: Trivy is not installed."
+
+                        exit 1
+
+                    fi
 
 
                     trivy --version
 
 
                     echo "Trivy is available."
-
                 '''
             }
         }
 
 
         // =====================================================
-        // 10. TRIVY FRONTEND SCAN
+        // 11. TRIVY FRONTEND SCAN
         // =====================================================
 
         stage('Trivy Frontend Scan') {
@@ -441,35 +471,28 @@ of your GitHub repository.
             steps {
 
                 sh '''
-
                     set -e
 
 
                     echo "=========================================="
-
-                    echo "Trivy Frontend Image Scan"
-
+                    echo "Scanning Frontend Image"
                     echo "=========================================="
 
 
                     trivy image \
-
-                      --severity HIGH,CRITICAL \
-
-                      --exit-code 1 \
-
-                      ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
+                        --severity HIGH,CRITICAL \
+                        --exit-code 1 \
+                        ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
 
 
-                    echo "Frontend Trivy scan passed."
-
+                    echo "Frontend security scan passed."
                 '''
             }
         }
 
 
         // =====================================================
-        // 11. TRIVY BACKEND SCAN
+        // 12. TRIVY BACKEND SCAN
         // =====================================================
 
         stage('Trivy Backend Scan') {
@@ -477,35 +500,28 @@ of your GitHub repository.
             steps {
 
                 sh '''
-
                     set -e
 
 
                     echo "=========================================="
-
-                    echo "Trivy Backend Image Scan"
-
+                    echo "Scanning Backend Image"
                     echo "=========================================="
 
 
                     trivy image \
-
-                      --severity HIGH,CRITICAL \
-
-                      --exit-code 1 \
-
-                      ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
+                        --severity HIGH,CRITICAL \
+                        --exit-code 1 \
+                        ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
 
 
-                    echo "Backend Trivy scan passed."
-
+                    echo "Backend security scan passed."
                 '''
             }
         }
 
 
         // =====================================================
-        // 12. PUSH DOCKER IMAGES
+        // 13. DOCKER HUB PUSH
         // =====================================================
 
         stage('Push Docker Images') {
@@ -529,49 +545,39 @@ of your GitHub repository.
 
                 ]) {
 
-
                     sh '''
-
                         set -e
 
 
                         echo "=========================================="
-
                         echo "Docker Hub Login"
-
                         echo "=========================================="
 
 
-                        echo "$DOCKER_PASSWORD" |
-
-                        docker login \
-
-                          --username "$DOCKER_USER" \
-
-                          --password-stdin
+                        echo "$DOCKER_PASSWORD" | \
+                            docker login \
+                            --username "$DOCKER_USER" \
+                            --password-stdin
 
 
                         echo "Pushing frontend image..."
 
 
                         docker push \
-
-                          ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
+                            ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
 
 
                         echo "Pushing backend image..."
 
 
                         docker push \
-
-                          ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
+                            ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
 
 
                         docker logout
 
 
                         echo "Docker images pushed successfully."
-
                     '''
                 }
             }
@@ -579,7 +585,7 @@ of your GitHub repository.
 
 
         // =====================================================
-        // 13. TERRAFORM INIT
+        // 14. TERRAFORM INIT
         // =====================================================
 
         stage('Terraform Init') {
@@ -589,19 +595,15 @@ of your GitHub repository.
                 dir("${TERRAFORM_DIR}") {
 
                     sh '''
-
                         set -e
 
 
                         echo "=========================================="
-
                         echo "Terraform Init"
-
                         echo "=========================================="
 
 
                         terraform init
-
                     '''
                 }
             }
@@ -609,7 +611,7 @@ of your GitHub repository.
 
 
         // =====================================================
-        // 14. TERRAFORM VALIDATE
+        // 15. TERRAFORM VALIDATE
         // =====================================================
 
         stage('Terraform Validate') {
@@ -619,19 +621,15 @@ of your GitHub repository.
                 dir("${TERRAFORM_DIR}") {
 
                     sh '''
-
                         set -e
 
 
                         echo "=========================================="
-
                         echo "Terraform Validate"
-
                         echo "=========================================="
 
 
                         terraform validate
-
                     '''
                 }
             }
@@ -639,7 +637,7 @@ of your GitHub repository.
 
 
         // =====================================================
-        // 15. TERRAFORM PLAN
+        // 16. TERRAFORM PLAN
         // =====================================================
 
         stage('Terraform Plan') {
@@ -649,21 +647,16 @@ of your GitHub repository.
                 dir("${TERRAFORM_DIR}") {
 
                     sh '''
-
                         set -e
 
 
                         echo "=========================================="
-
                         echo "Terraform Plan"
-
                         echo "=========================================="
 
 
                         terraform plan \
-
-                          -out=tfplan
-
+                            -out=tfplan
                     '''
                 }
             }
@@ -671,7 +664,7 @@ of your GitHub repository.
 
 
         // =====================================================
-        // 16. TERRAFORM APPLY
+        // 17. TERRAFORM APPLY
         // =====================================================
 
         stage('Terraform Apply') {
@@ -681,23 +674,17 @@ of your GitHub repository.
                 dir("${TERRAFORM_DIR}") {
 
                     sh '''
-
                         set -e
 
 
                         echo "=========================================="
-
                         echo "Terraform Apply"
-
                         echo "=========================================="
 
 
                         terraform apply \
-
-                          -auto-approve \
-
-                          tfplan
-
+                            -auto-approve \
+                            tfplan
                     '''
                 }
             }
@@ -705,7 +692,7 @@ of your GitHub repository.
 
 
         // =====================================================
-        // 17. GET EC2 IP
+        // 18. GET EC2 IP
         // =====================================================
 
         stage('Get EC2 IP') {
@@ -730,15 +717,13 @@ of your GitHub repository.
                         if (!env.EC2_IP) {
 
                             error(
-                                "Terraform did not return EC2 public IP."
+                                'Terraform did not return public_ip'
                             )
                         }
 
 
                         echo "=========================================="
-
                         echo "EC2 Public IP: ${env.EC2_IP}"
-
                         echo "=========================================="
                     }
                 }
@@ -747,7 +732,7 @@ of your GitHub repository.
 
 
         // =====================================================
-        // 18. WAIT FOR EC2
+        // 19. WAIT FOR EC2
         // =====================================================
 
         stage('Wait For EC2') {
@@ -757,9 +742,7 @@ of your GitHub repository.
                 script {
 
                     echo "=========================================="
-
                     echo "Waiting for EC2 SSH"
-
                     echo "=========================================="
 
 
@@ -773,7 +756,7 @@ of your GitHub repository.
                             sshUserPrivateKey(
 
                                 credentialsId:
-                                    'ec2-ssh-key',
+                                    "${EC2_SSH_CREDENTIAL}",
 
                                 keyFileVariable:
                                     'SSH_KEY'
@@ -782,24 +765,16 @@ of your GitHub repository.
 
                         ]) {
 
-
                             sh '''
-
                                 chmod 600 "$SSH_KEY"
 
 
                                 ssh \
-
-                                  -o StrictHostKeyChecking=no \
-
-                                  -o ConnectTimeout=10 \
-
-                                  -i "$SSH_KEY" \
-
-                                  ${EC2_USER}@${EC2_IP} \
-
-                                  "echo SSH connection successful"
-
+                                    -o StrictHostKeyChecking=no \
+                                    -o ConnectTimeout=10 \
+                                    -i "$SSH_KEY" \
+                                    ${EC2_USER}@${EC2_IP} \
+                                    "echo SSH connection successful"
                             '''
                         }
                     }
@@ -809,7 +784,7 @@ of your GitHub repository.
 
 
         // =====================================================
-        // 19. DEPLOY APPLICATION
+        // 20. DEPLOY APPLICATION
         // =====================================================
 
         stage('Deploy Application') {
@@ -821,7 +796,7 @@ of your GitHub repository.
                     sshUserPrivateKey(
 
                         credentialsId:
-                            'ec2-ssh-key',
+                            "${EC2_SSH_CREDENTIAL}",
 
                         keyFileVariable:
                             'SSH_KEY'
@@ -830,16 +805,12 @@ of your GitHub repository.
 
                 ]) {
 
-
                     sh '''
-
                         set -e
 
 
                         echo "=========================================="
-
                         echo "Deploying Application"
-
                         echo "=========================================="
 
 
@@ -850,26 +821,19 @@ of your GitHub repository.
 
 
                         scp \
-
-                          -o StrictHostKeyChecking=no \
-
-                          -i "$SSH_KEY" \
-
-                          docker-compose.yml \
-
-                          ${EC2_USER}@${EC2_IP}:/home/${EC2_USER}/
+                            -o StrictHostKeyChecking=no \
+                            -i "$SSH_KEY" \
+                            docker-compose.yml \
+                            ${EC2_USER}@${EC2_IP}:/home/${EC2_USER}/
 
 
                         echo "Connecting to EC2..."
 
 
                         ssh \
-
-                          -o StrictHostKeyChecking=no \
-
-                          -i "$SSH_KEY" \
-
-                          ${EC2_USER}@${EC2_IP} << EOF
+                            -o StrictHostKeyChecking=no \
+                            -i "$SSH_KEY" \
+                            ${EC2_USER}@${EC2_IP} << EOF
 
 
                         set -e
@@ -889,19 +853,17 @@ of your GitHub repository.
 
 
                         docker pull \
-
-                          ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
+                            ${DOCKER_USERNAME}/${FRONTEND_IMAGE}:latest
 
 
                         echo "Pulling backend image..."
 
 
                         docker pull \
+                            ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
 
-                          ${DOCKER_USERNAME}/${BACKEND_IMAGE}:latest
 
-
-                        echo "Stopping old containers..."
+                        echo "Stopping existing application..."
 
 
                         docker compose down || true
@@ -915,12 +877,10 @@ of your GitHub repository.
 
                         echo "Running containers:"
 
-
                         docker ps
 
 
                         EOF
-
                     '''
                 }
             }
@@ -928,7 +888,7 @@ of your GitHub repository.
 
 
         // =====================================================
-        // 20. VERIFY APPLICATION
+        // 21. VERIFY APPLICATION
         // =====================================================
 
         stage('Verify Application') {
@@ -938,9 +898,7 @@ of your GitHub repository.
                 script {
 
                     echo "=========================================="
-
-                    echo "Application Verification"
-
+                    echo "Verifying Application"
                     echo "=========================================="
 
 
@@ -948,7 +906,6 @@ of your GitHub repository.
 
 
                     sh '''
-
                         set -e
 
 
@@ -956,18 +913,15 @@ of your GitHub repository.
 
 
                         curl \
-
-                          --fail \
-
-                          --connect-timeout 10 \
-
-                          http://${EC2_IP}
+                            --fail \
+                            --connect-timeout 10 \
+                            http://${EC2_IP}
 
 
                         echo ""
 
-                        echo "Application verification successful."
 
+                        echo "Application verification successful."
                     '''
                 }
             }
@@ -1016,7 +970,7 @@ Check the failed stage in the Jenkins console.
         always {
 
             echo "Pipeline execution completed."
-
         }
     }
 }
+

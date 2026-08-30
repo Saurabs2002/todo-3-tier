@@ -3,19 +3,16 @@ pipeline {
     agent any
 
     environment {
-
-        DOCKER_CREDENTIAL_ID = 'dockerhub-credentials'
-        AWS_CREDENTIAL_ID    = 'aws-credentials'
-        SSH_CREDENTIAL_ID    = 'ec2-ssh-key'
+        EC2_SSH_CREDENTIAL = 'ec2-ssh-key'
     }
+
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
+
+        // ============================================================
+        // READ INPUT FILE
+        // ============================================================
 
         stage('Read Input File') {
 
@@ -23,84 +20,119 @@ pipeline {
 
                 script {
 
-                    def input = readProperties(
+                    if (!fileExists('jenkins-inputs.properties')) {
+                        error "jenkins-inputs.properties file not found!"
+                    }
+
+
+                    def props = readProperties(
                         file: 'jenkins-inputs.properties'
                     )
 
-                    env.AWS_REGION = input['AWS_REGION']
 
-                    env.DOCKER_USERNAME =
-                        input['DOCKER_USERNAME']
+                    env.AWS_REGION       = props['aws_region']
 
-                    env.EC2_USER =
-                        input['EC2_USER']
+                    env.DOCKER_USERNAME  = props['docker_username']
 
-                    env.TERRAFORM_DIR =
-                        input['TERRAFORM_DIR']
-
-                    env.FRONTEND_DIR =
-                        input['FRONTEND_DIR']
-
-                    env.BACKEND_DIR =
-                        input['BACKEND_DIR']
-
-                    env.FRONTEND_REPOSITORY =
-                        input['FRONTEND_REPOSITORY']
-
-                    env.BACKEND_REPOSITORY =
-                        input['BACKEND_REPOSITORY']
+                    env.EC2_USER         = props['ec2_user']
 
 
-                    env.FRONTEND_IMAGE =
-                        "${env.DOCKER_USERNAME}/${env.FRONTEND_REPOSITORY}"
+                    env.TERRAFORM_DIR    = props['terraform_directory']
 
-                    env.BACKEND_IMAGE =
-                        "${env.DOCKER_USERNAME}/${env.BACKEND_REPOSITORY}"
+                    env.FRONTEND_DIR     = props['frontend_directory']
+
+                    env.BACKEND_DIR      = props['backend_directory']
 
 
-                    echo "AWS Region: ${env.AWS_REGION}"
+                    env.FRONTEND_IMAGE   = props['frontend_image']
 
-                    echo "Docker Username: ${env.DOCKER_USERNAME}"
+                    env.BACKEND_IMAGE    = props['backend_image']
 
-                    echo "EC2 User: ${env.EC2_USER}"
 
-                    echo "Terraform Directory: ${env.TERRAFORM_DIR}"
+                    env.PROMETHEUS_DIR   = props['prometheus_directory']
 
-                    echo "Frontend Image: ${env.FRONTEND_IMAGE}"
 
-                    echo "Backend Image: ${env.BACKEND_IMAGE}"
+                    env.AMI_ID           = props['ami_id']
+
+                    env.INSTANCE_TYPE    = props['instance_type']
+
+                    env.KEY_NAME         = props['key_name']
+
+
+                    echo """
+                    ================================
+                    Configuration Loaded
+                    ================================
+                    AWS Region       : ${AWS_REGION}
+                    Frontend Image   : ${FRONTEND_IMAGE}
+                    Backend Image    : ${BACKEND_IMAGE}
+                    Prometheus Path  : ${PROMETHEUS_DIR}
+                    Terraform Dir    : ${TERRAFORM_DIR}
+                    ================================
+                    """
+
                 }
+
             }
+
         }
 
-        stage('Test') {
+
+
+        // ============================================================
+        // BUILD FRONTEND IMAGE
+        // ============================================================
+
+        stage('Build Frontend Image') {
 
             steps {
 
                 sh '''
-                    echo "Running tests..."
-                    echo "Tests passed"
+                    docker build \
+                    -t "$DOCKER_USERNAME/$FRONTEND_IMAGE:$BUILD_NUMBER" \
+                    "$FRONTEND_DIR"
+
+
+                    docker tag \
+                    "$DOCKER_USERNAME/$FRONTEND_IMAGE:$BUILD_NUMBER" \
+                    "$DOCKER_USERNAME/$FRONTEND_IMAGE:latest"
                 '''
+
             }
+
         }
 
-        stage('Build Docker Images') {
+
+
+        // ============================================================
+        // BUILD BACKEND IMAGE
+        // ============================================================
+
+        stage('Build Backend Image') {
 
             steps {
 
-                sh """
+                sh '''
                     docker build \
-                    -t ${env.FRONTEND_IMAGE}:${BUILD_NUMBER} \
-                    ./${env.FRONTEND_DIR}
-                """
+                    -t "$DOCKER_USERNAME/$BACKEND_IMAGE:$BUILD_NUMBER" \
+                    "$BACKEND_DIR"
 
-                sh """
-                    docker build \
-                    -t ${env.BACKEND_IMAGE}:${BUILD_NUMBER} \
-                    ./${env.BACKEND_DIR}
-                """
+
+                    docker tag \
+                    "$DOCKER_USERNAME/$BACKEND_IMAGE:$BUILD_NUMBER" \
+                    "$DOCKER_USERNAME/$BACKEND_IMAGE:latest"
+                '''
+
             }
+
         }
+
+
+
+
+        // ============================================================
+        // PUSH DOCKER IMAGES
+        // ============================================================
 
         stage('Push Docker Images') {
 
@@ -108,238 +140,281 @@ pipeline {
 
                 withCredentials([
                     usernamePassword(
-                        credentialsId: "${DOCKER_CREDENTIAL_ID}",
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASSWORD'
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'USERNAME',
+                        passwordVariable: 'TOKEN'
                     )
                 ]) {
 
-                    sh """
 
-                        echo "\$DOCKER_PASSWORD" | \
-                        docker login \
-                        -u "\$DOCKER_USER" \
-                        --password-stdin
+                    sh '''
 
-                        docker push \
-                        ${env.FRONTEND_IMAGE}:${BUILD_NUMBER}
+                    echo "$TOKEN" | docker login \
+                    -u "$USERNAME" \
+                    --password-stdin
 
-                        docker push \
-                        ${env.BACKEND_IMAGE}:${BUILD_NUMBER}
 
-                        docker logout
-                    """
+                    docker push \
+                    "$DOCKER_USERNAME/$FRONTEND_IMAGE:$BUILD_NUMBER"
+
+
+                    docker push \
+                    "$DOCKER_USERNAME/$FRONTEND_IMAGE:latest"
+
+
+                    docker push \
+                    "$DOCKER_USERNAME/$BACKEND_IMAGE:$BUILD_NUMBER"
+
+
+                    docker push \
+                    "$DOCKER_USERNAME/$BACKEND_IMAGE:latest"
+
+
+                    docker logout
+
+                    '''
+
                 }
+
             }
+
         }
 
-        stage('Terraform Init') {
 
-            steps {
 
-                dir("${env.TERRAFORM_DIR}") {
 
-                    sh 'terraform init'
-                }
-            }
-        }
-
-        stage('Terraform Validate') {
-
-            steps {
-
-                dir("${env.TERRAFORM_DIR}") {
-
-                    sh 'terraform validate'
-                }
-            }
-        }
-
-        stage('Terraform Plan') {
-
-            steps {
-
-                dir("${env.TERRAFORM_DIR}") {
-
-                    withCredentials([
-                        [$class:
-                            'AmazonWebServicesCredentialsBinding',
-                            credentialsId:
-                            "${AWS_CREDENTIAL_ID}"
-                        ]
-                    ]) {
-
-                        sh """
-                            terraform plan \
-                            -var="aws_region=${env.AWS_REGION}"
-                        """
-                    }
-                }
-            }
-        }
+        // ============================================================
+        // TERRAFORM APPLY
+        // ============================================================
 
         stage('Terraform Apply') {
 
             steps {
 
-                dir("${env.TERRAFORM_DIR}") {
+                dir("${TERRAFORM_DIR}") {
 
-                    withCredentials([
-                        [$class:
-                            'AmazonWebServicesCredentialsBinding',
-                            credentialsId:
-                            "${AWS_CREDENTIAL_ID}"
-                        ]
-                    ]) {
+                    sh '''
 
-                        sh """
-                            terraform apply \
-                            -auto-approve \
-                            -var="aws_region=${env.AWS_REGION}"
-                        """
-                    }
+                    terraform init
+
+
+                    terraform apply \
+                    -auto-approve \
+                    -var="aws_region=$AWS_REGION" \
+                    -var="ami_id=$AMI_ID" \
+                    -var="instance_type=$INSTANCE_TYPE" \
+                    -var="key_name=$KEY_NAME"
+
+                    '''
+
                 }
+
             }
+
         }
+
+
+
+
+
+        // ============================================================
+        // GET EC2 IP
+        // ============================================================
 
         stage('Get EC2 IP') {
 
             steps {
 
-                dir("${env.TERRAFORM_DIR}") {
+                dir("${TERRAFORM_DIR}") {
 
                     script {
 
                         env.EC2_IP = sh(
-                            script:
-                            'terraform output -raw ec2_public_ip',
+                            script: 'terraform output -raw public_ip',
                             returnStdout: true
                         ).trim()
 
-                        echo "EC2 IP: ${env.EC2_IP}"
+
+                        echo "EC2 IP : ${EC2_IP}"
+
                     }
+
                 }
+
             }
+
         }
 
-        stage('Wait For EC2') {
 
-            steps {
 
-                script {
 
-                    retry(12) {
 
-                        sleep 10
+        // ============================================================
+        // DEPLOY APPLICATION
+        // ============================================================
 
-                        sshagent([
-                            "${SSH_CREDENTIAL_ID}"
-                        ]) {
-
-                            sh """
-
-                                ssh \
-                                -o StrictHostKeyChecking=no \
-                                -o ConnectTimeout=10 \
-                                ${env.EC2_USER}@${env.EC2_IP} \
-                                "echo EC2 is ready"
-
-                            """
-                        }
-                    }
-                }
-            }
-        }
 
         stage('Deploy Application') {
 
             steps {
 
-                sshagent([
-                    "${SSH_CREDENTIAL_ID}"
+
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: "${EC2_SSH_CREDENTIAL}",
+                        keyFileVariable: 'SSH_KEY'
+                    )
                 ]) {
 
-                    sh """
 
-                        scp \
-                        -o StrictHostKeyChecking=no \
-                        docker-compose.yml \
-                        ${env.EC2_USER}@${env.EC2_IP}:/home/${env.EC2_USER}/
+                    sh '''
+
+                    chmod 600 "$SSH_KEY"
 
 
-                        ssh \
-                        -o StrictHostKeyChecking=no \
-                        ${env.EC2_USER}@${env.EC2_IP} \
-                        "cd /home/${env.EC2_USER} && \
-                        export IMAGE_TAG=${BUILD_NUMBER} && \
-                        docker compose pull && \
-                        docker compose up -d"
 
-                    """
+                    ssh \
+                    -o StrictHostKeyChecking=no \
+                    -i "$SSH_KEY" \
+                    "$EC2_USER@$EC2_IP" "
+
+                    sudo apt-get update
+
+                    sudo apt-get install -y docker.io docker-compose-v2
+
+                    sudo systemctl enable docker
+
+                    sudo systemctl start docker
+
+
+                    mkdir -p ~/todo-app/$PROMETHEUS_DIR
+
+                    "
+
+
+
+
+                    # Copy docker compose
+
+                    scp \
+                    -o StrictHostKeyChecking=no \
+                    -i "$SSH_KEY" \
+                    docker-compose.yml \
+                    "$EC2_USER@$EC2_IP:~/todo-app/"
+
+
+
+                    # Copy prometheus configuration
+
+                    scp \
+                    -o StrictHostKeyChecking=no \
+                    -i "$SSH_KEY" \
+                    "$PROMETHEUS_DIR/prometheus.yml" \
+                    "$EC2_USER@$EC2_IP:~/todo-app/$PROMETHEUS_DIR/"
+
+
+
+                    ssh \
+                    -o StrictHostKeyChecking=no \
+                    -i "$SSH_KEY" \
+                    "$EC2_USER@$EC2_IP" "
+
+
+                    cd ~/todo-app
+
+
+                    docker compose down \
+                    --remove-orphans || true
+
+
+                    docker compose pull
+
+
+                    docker compose up -d
+
+
+                    docker compose ps
+
+                    "
+
+
+                    '''
+
                 }
+
             }
+
         }
 
-        stage('Verify') {
+
+
+
+
+        // ============================================================
+        // VERIFY
+        // ============================================================
+
+        stage('Verify Deployment') {
 
             steps {
 
-                sshagent([
-                    "${SSH_CREDENTIAL_ID}"
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: "${EC2_SSH_CREDENTIAL}",
+                        keyFileVariable: 'SSH_KEY'
+                    )
                 ]) {
 
-                    sh """
 
-                        ssh \
-                        -o StrictHostKeyChecking=no \
-                        ${env.EC2_USER}@${env.EC2_IP} \
-                        "docker ps"
+                    sh '''
 
-                    echo "Application URL:"
-                    echo "http://${env.EC2_IP}"
+                    ssh \
+                    -o StrictHostKeyChecking=no \
+                    -i "$SSH_KEY" \
+                    "$EC2_USER@$EC2_IP" "
 
-                    """
+
+                    docker ps
+
+
+                    curl -f http://localhost:80
+
+
+                    curl -f http://localhost:9090
+
+
+                    curl -f http://localhost:3001
+
+
+                    "
+
+                    '''
+
                 }
+
             }
+
         }
+
+
     }
+
 
     post {
 
         success {
 
-            echo """
-            ==========================================
-              DEPLOYMENT SUCCESSFUL
-            ==========================================
+            echo "Deployment completed successfully"
 
-            EC2 IP:
-            ${env.EC2_IP}
-
-            Frontend:
-            ${env.FRONTEND_IMAGE}:${BUILD_NUMBER}
-
-            Backend:
-            ${env.BACKEND_IMAGE}:${BUILD_NUMBER}
-
-            Application:
-            http://${env.EC2_IP}
-
-            ==========================================
-            """
         }
+
 
         failure {
 
-            echo """
-            ==========================================
-              PIPELINE FAILED
-            ==========================================
+            echo "Deployment failed"
 
-            Check Jenkins Console Output.
-
-            ==========================================
-            """
         }
+
     }
+
 }

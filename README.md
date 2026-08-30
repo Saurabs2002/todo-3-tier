@@ -1,62 +1,56 @@
-# Todo 3-Tier Application - Docker, Jenkins, Terraform, AWS & Monitoring
+# Todo 3-Tier Application - DevOps Automation Project
 
 ## Project Overview
 
-This project demonstrates the deployment of a **3-tier Todo application** using modern DevOps practices.
+This project demonstrates an end-to-end DevOps implementation of a 3-tier Todo application using modern cloud-native and automation tools.
 
-The application consists of:
+The application is containerized using Docker and deployed on an AWS EC2 instance using Jenkins CI/CD automation.
 
-- Frontend: React / Nginx based UI
-- Backend: Node.js REST API
-- Database: PostgreSQL
-- Containerization: Docker & Docker Compose
-- Infrastructure Provisioning: Terraform
-- CI/CD Automation: Jenkins
-- Cloud Platform: AWS EC2
-- Monitoring: Prometheus + Grafana + cAdvisor
+The complete deployment process includes:
 
-The complete workflow automates:
-
-1. Docker image creation
-2. Image publishing to Docker Hub
-3. AWS EC2 infrastructure provisioning
-4. Application deployment using Docker Compose
-5. Container monitoring using Prometheus and Grafana
-
+* Source code checkout
+* Docker image creation
+* Docker image publishing
+* Infrastructure provisioning using Terraform
+* EC2 instance creation
+* Automated application deployment
+* Database deployment
+* Monitoring setup using Prometheus and Grafana
 
 ---
 
-# Architecture
+# Architecture Overview
 
 ```
-                 User
-                  |
-                  |
-              AWS EC2
-                  |
-        ---------------------
-        |                   |
-     Frontend            Backend
-     Nginx               Node.js
-     Port 80             Port 3000
-                            |
-                            |
-                       PostgreSQL
-                       Port 5432
+                    Developer
+                        |
+                        |
+                    Git Repository
+                        |
+                        |
+                    Jenkins Pipeline
+                        |
+        --------------------------------
+        |              |               |
+     Docker        Terraform        Deployment
+     Build         Provisioning       Script
+        |              |               |
+        |              |               |
+ Docker Hub        AWS EC2        SSH Deployment
+                                    |
+                                    |
+                            Docker Compose
+                                    |
+        ------------------------------------------------
+        |              |              |                 |
+    Frontend       Backend       PostgreSQL       Monitoring
+    Nginx          API           Database        Stack
+                                                 |
+                                      -----------------------
+                                      |                     |
+                                Prometheus             Grafana
 
-
-Monitoring:
-
-        Docker Containers
-                |
-             cAdvisor
-                |
-           Prometheus
-                |
-             Grafana
-             Port 3001
 ```
-
 
 ---
 
@@ -64,349 +58,397 @@ Monitoring:
 
 ## Cloud
 
-- AWS EC2
-- AWS Security Groups
-- AWS IAM
-
+* AWS EC2
+* AWS IAM
+* AWS VPC
 
 ## Infrastructure as Code
 
-- Terraform
-
+* Terraform
 
 ## CI/CD
 
-- Jenkins
-- GitHub
-
+* Jenkins
+* Git
 
 ## Containerization
 
-- Docker
-- Docker Compose
-
+* Docker
+* Docker Compose
 
 ## Application
 
 Frontend:
 
-- React
-- Nginx
-
+* React / Nginx
 
 Backend:
 
-- Node.js
-- Express API
-
+* Node.js API
 
 Database:
 
-- PostgreSQL
-
+* PostgreSQL
 
 ## Monitoring
 
-- Prometheus
-- Grafana
-- cAdvisor
-
+* Prometheus
+* Grafana
 
 ---
 
-# Project Folder Structure
+# Project Directory Structure
 
 ```
-Todo-3-tier/
-
-├── frontend/
-│   ├── Dockerfile
-│   └── React application
-
-
-├── backend/
-│   ├── Dockerfile
-│   └── Node.js application
-
-
-├── monitoring/
-│   └── prometheus/
-│       └── prometheus.yml
-
-
-├── terraform/
+Todo-3-tier
+|
+├── Jenkinsfile
+|
+├── scripts
+│
+│   ├── config.groovy
+│   ├── docker.groovy
+│   ├── terraform.groovy
+│   ├── ec2.groovy
+│   ├── deploy.groovy
+│   └── verify.groovy
+|
+├── frontend
+│   └── Dockerfile
+|
+├── backend
+│   └── Dockerfile
+|
+├── terraform
+│
 │   ├── main.tf
 │   ├── variables.tf
 │   └── outputs.tf
-
-
+|
+├── monitoring
+│
+│   └── prometheus
+│       └── prometheus.yml
+|
 ├── docker-compose.yml
-
-├── Jenkinsfile
-
+|
 └── jenkins-inputs.properties
 
 ```
 
+---
+
+# Jenkins Pipeline Architecture
+
+The Jenkins pipeline is modularized into multiple Groovy files for better maintenance.
+
+## Jenkinsfile
+
+The main Jenkinsfile controls only the pipeline execution flow.
+
+Pipeline stages:
+
+```
+Load Configuration
+        |
+        |
+Build Docker Images
+        |
+        |
+Push Docker Images
+        |
+        |
+Terraform Infrastructure
+        |
+        |
+Get EC2 IP
+        |
+        |
+Wait For SSH
+        |
+        |
+Deploy Application
+        |
+        |
+Verify Deployment
+
+```
 
 ---
 
-# Prerequisites
+# Jenkins Groovy Modules
 
-Install the following tools:
+## config.groovy
 
-## Local Machine
+Responsible for:
 
-- Git
-- Docker
-- Docker Compose
-- Terraform
-
-
-## AWS
-
-Required:
-
-- AWS Account
-- IAM user with required permissions
-- EC2 Key Pair
-
-
-## Jenkins
-
-Required plugins:
-
-- Pipeline Plugin
-- Docker Pipeline Plugin
-- SSH Agent Plugin
-- Credentials Binding Plugin
-
-
----
-
-# Configuration
-
-Create:
-
-```
-jenkins-inputs.properties
-```
-
+* Reading `jenkins-inputs.properties`
+* Loading environment variables
+* Setting application configuration
 
 Example:
 
-```properties
-aws_region=ap-south-1
-
-docker_username=<dockerhub_username>
-
-frontend_image=todo-frontend
-
-backend_image=todo-backend
-
-
-frontend_directory=frontend
-
-backend_directory=backend
-
-
-prometheus_directory=monitoring/prometheus
-
-
-terraform_directory=terraform
-
-
-ami_id=<ami-id>
-
-instance_type=t2.micro
-
-key_name=<aws-key-name>
-
-ec2_user=ubuntu
 ```
+AWS_REGION
+DOCKER_USERNAME
+FRONTEND_IMAGE
+BACKEND_IMAGE
+TERRAFORM_DIR
+EC2_USER
 
+```
 
 ---
 
-# Running Application Manually
+## docker.groovy
 
-## 1. Clone Repository
+Responsible for:
 
-```bash
-git clone <repository-url>
+* Building frontend Docker image
+* Building backend Docker image
+* Tagging images
+* Pushing images to Docker Hub
 
-cd Todo-3-tier
+Flow:
+
 ```
-
+Dockerfile
+    |
+Docker Build
+    |
+Docker Tag
+    |
+Docker Push
+```
 
 ---
 
-## 2. Build Docker Images
+## terraform.groovy
 
-Frontend:
+Responsible for:
 
-```bash
-docker build \
--t username/todo-frontend:latest \
-./frontend
+* Terraform initialization
+* Infrastructure provisioning
+* Creating EC2 instance
+
+Commands:
+
 ```
-
-
-Backend:
-
-```bash
-docker build \
--t username/todo-backend:latest \
-./backend
-```
-
-
----
-
-## 3. Push Images
-
-Login:
-
-```bash
-docker login
-```
-
-
-Push:
-
-```bash
-docker push username/todo-frontend:latest
-
-docker push username/todo-backend:latest
-```
-
-
----
-
-# Deploy Infrastructure using Terraform
-
-Navigate:
-
-```bash
-cd terraform
-```
-
-
-Initialize:
-
-```bash
 terraform init
+
+terraform apply
+
 ```
-
-
-Validate:
-
-```bash
-terraform validate
-```
-
-
-Plan:
-
-```bash
-terraform plan
-```
-
-
-Create EC2:
-
-```bash
-terraform apply -auto-approve
-```
-
-
-Get EC2 IP:
-
-```bash
-terraform output public_ip
-```
-
 
 ---
 
-# Deploy Application using Docker Compose
+## ec2.groovy
 
-SSH into EC2:
+Responsible for:
 
-```bash
-ssh -i key.pem ubuntu@<EC2-IP>
+* Fetching EC2 public IP
+* Checking SSH availability
+* Waiting until EC2 is ready
+
+SSH retry mechanism:
+
+```
+Retry 20 times
+Wait 15 seconds
+Connect again
+
 ```
 
+---
 
-Install Docker:
+## deploy.groovy
+
+Responsible for application deployment.
+
+Steps:
+
+1. Connect to EC2
+2. Install Docker
+3. Install Docker Compose
+4. Create application directory
+5. Copy docker-compose file
+6. Copy Prometheus configuration
+7. Create environment file
+8. Pull Docker images
+9. Start containers
+
+---
+
+## verify.groovy
+
+Responsible for deployment validation.
+
+Checks:
+
+```
+docker ps
+
+docker compose ps
+
+container status
+
+```
+
+---
+
+# Jenkins Setup
+
+## Install Jenkins
+
+Install Java:
 
 ```bash
 sudo apt update
 
-sudo apt install docker.io docker-compose-v2 -y
+sudo apt install openjdk-17-jdk -y
+
 ```
 
-
-Clone project or copy compose file.
-
-
-Start application:
+Install Jenkins:
 
 ```bash
-docker compose up -d
-```
+sudo apt install jenkins -y
 
 
-Check containers:
-
-```bash
-docker ps
-```
+sudo systemctl start jenkins
 
 
-Expected containers:
+sudo systemctl enable jenkins
 
 ```
-todo-frontend
-todo-backend
-todo-postgres
-prometheus
-grafana
-cadvisor
-```
 
+Access Jenkins:
+
+```
+http://<jenkins-server-ip>:8080
+
+```
 
 ---
 
-# CI/CD Pipeline Flow
+# Required Jenkins Plugins
 
-Jenkins pipeline performs:
+Install following plugins:
+
+## Pipeline Plugins
+
+* Pipeline
+* Pipeline Utility Steps
+
+## Git Plugins
+
+* Git Plugin
+* GitHub Integration Plugin
+
+## Docker Plugins
+
+* Docker Pipeline Plugin
+* Docker Commons Plugin
+
+## Credential Plugins
+
+* Credentials Binding Plugin
+* SSH Agent Plugin
+
+---
+
+# Jenkins Credentials
+
+## Docker Hub Credential
+
+Type:
 
 ```
-Developer Push Code
-        |
-        |
-      GitHub
-        |
-        |
-     Jenkins
-        |
-        |
- Build Docker Images
-        |
-        |
- Push Images
-        |
-        |
- Terraform Create EC2
-        |
-        |
- Deploy Docker Compose
-        |
-        |
- Application Running
+Username with password
+
 ```
 
+Credential ID:
+
+```
+dockerhub-credentials
+
+```
+
+Used for:
+
+* Docker login
+* Docker push
+
+---
+
+## EC2 SSH Credential
+
+Type:
+
+```
+SSH Username with private key
+
+```
+
+Credential ID:
+
+```
+ec2-ssh-key
+
+```
+
+Used for:
+
+* EC2 connection
+* Remote deployment
+
+---
+
+# Application Deployment
+
+## Docker Compose Services
+
+The application runs using Docker Compose.
+
+Services:
+
+```
+frontend
+
+backend
+
+postgres
+
+prometheus
+
+grafana
+
+```
+
+---
+
+# Database Configuration
+
+PostgreSQL container:
+
+Environment:
+
+```
+POSTGRES_DB=todo
+
+POSTGRES_USER=postgres
+
+POSTGRES_PASSWORD=postgres
+
+```
+
+Database storage:
+
+```
+postgres-data volume
+
+```
 
 ---
 
@@ -414,321 +456,211 @@ Developer Push Code
 
 ## Prometheus
 
-URL:
+Prometheus collects application and container metrics.
+
+Configuration:
+
+```
+monitoring/prometheus/prometheus.yml
+
+```
+
+Access:
 
 ```
 http://<EC2-IP>:9090
+
 ```
-
-
-Prometheus collects:
-
-- Container CPU usage
-- Memory usage
-- Network metrics
-
 
 ---
 
 ## Grafana
 
-URL:
+Grafana provides visualization dashboards.
+
+Access:
 
 ```
 http://<EC2-IP>:3001
-```
-
-
-Add Prometheus datasource:
 
 ```
-Connections
-    |
-Data Sources
-    |
-Prometheus
-```
 
+Steps:
+
+1. Login to Grafana
+
+2. Add Prometheus datasource
 
 URL:
 
 ```
 http://prometheus:9090
+
 ```
 
+3. Import dashboard
+
+Recommended dashboards:
+
+* Docker Container Monitoring
+* Node Exporter Dashboard
 
 ---
 
-# Import Grafana Dashboard
+# Running Project Manually
 
-Steps:
-
-```
-Grafana
-
-Dashboard
-
-New Dashboard
-
-Import
-```
-
-
-Use dashboard ID:
+## Clone Repository
 
 ```
-10619
-```
+git clone <repository-url>
 
-
-Select datasource:
+cd Todo-3-tier
 
 ```
-Prometheus
-```
-
-
-Dashboard shows:
-
-- Container CPU
-- Container Memory
-- Container Status
-- Network Usage
-
 
 ---
 
-# Common Issues Faced and Solutions
+## Build Images
 
-
-## 1. Docker Permission Denied
-
-### Issue
+Frontend:
 
 ```
-permission denied while connecting to Docker daemon socket
+docker build -t frontend ./frontend
+
 ```
 
+Backend:
 
-### Solution
-
-Add Jenkins user to Docker group:
-
-```bash
-sudo usermod -aG docker jenkins
-
-sudo systemctl restart jenkins
 ```
+docker build -t backend ./backend
 
+```
 
 ---
 
-## 2. Docker Login Failed
-
-### Issue
+## Start Application
 
 ```
-unauthorized: authentication required
-```
-
-
-### Solution
-
-Use Docker Hub access token instead of password.
-
-Create Jenkins credential:
+docker compose up -d
 
 ```
-Username Password
-```
-
-Use in pipeline:
-
-```
-docker login --password-stdin
-```
-
-
----
-
-## 3. Terraform EC2 Creation Failed
-
-### Issue
-
-```
-Invalid AWS credentials
-```
-
-
-### Solution
-
-Configure AWS credentials:
-
-```bash
-aws configure
-```
-
-
-Verify:
-
-```bash
-aws sts get-caller-identity
-```
-
-
----
-
-## 4. SSH Connection Failed
-
-### Issue
-
-```
-Connection timeout
-```
-
-
-### Solution:
 
 Check:
 
-- Security Group port 22
-- Correct username
-- Correct private key permission
-
-
-Fix key permission:
-
-```bash
-chmod 400 key.pem
 ```
+docker compose ps
 
+```
 
 ---
 
-## 5. Prometheus Showing No Data
+# Common Issues Faced
 
-### Issue
+## 1. Docker Permission Issue
 
-Grafana panels show:
+Problem:
 
 ```
-No data
+permission denied while connecting to docker daemon
+
 ```
 
+Solution:
 
-### Solution:
-
-Install cAdvisor.
-
-
-Verify:
-
-```bash
-docker ps
 ```
+sudo usermod -aG docker ubuntu
 
+newgrp docker
 
-Check metrics:
-
-```bash
-curl localhost:8080/metrics
 ```
-
-
-Restart:
-
-```bash
-docker compose restart prometheus
-```
-
 
 ---
 
-## 6. Container CPU Metrics Missing
+## 2. Terraform AWS Authentication Error
 
-### Issue
+Problem:
+
+```
+InvalidClientTokenId
+
+```
+
+Solution:
+
+* Configure AWS credentials
+* Verify IAM permissions
+
+---
+
+## 3. SSH Connection Failure
+
+Problem:
+
+```
+Connection timeout
+
+```
+
+Solution:
+
+* Added SSH retry mechanism
+* Waited until EC2 initialization completed
+
+---
+
+## 4. Backend Database Connection Issue
+
+Problem:
+
+Backend unable to connect with PostgreSQL.
+
+Solution:
+
+* Used Docker Compose service name
+* Added database health check
+* Configured dependency order
+
+---
+
+## 5. Prometheus Empty Query Result
+
+Problem:
 
 Query:
 
-```promql
+```
 rate(container_cpu_usage_seconds_total[5m])
-```
-
-returns:
 
 ```
-Empty query result
-```
 
-
-### Solution:
-
-Add cAdvisor service in docker-compose:
+returned:
 
 ```
-Docker Containers
-        |
-     cAdvisor
-        |
-   Prometheus
-        |
-    Grafana
+No data
+
 ```
 
+Solution:
 
----
-
-# Useful Docker Commands
-
-Check running containers:
-
-```bash
-docker ps
-```
-
-
-View logs:
-
-```bash
-docker logs <container-name>
-```
-
-
-Restart application:
-
-```bash
-docker compose restart
-```
-
-
-Stop application:
-
-```bash
-docker compose down
-```
-
-
-Check resources:
-
-```bash
-docker stats
-```
+* Configure container metrics exporter
+* Verify Prometheus targets
+* Check scrape configuration
 
 
 ---
 
 # Author
 
-Saurabh Singh
-
 DevOps Engineer
 
-Skills:
+Project: Todo 3-Tier Application Deployment Automation
 
-- AWS
-- Docker
-- Kubernetes
-- Terraform
-- Jenkins
-- Prometheus
-- Grafana
+Skills Demonstrated:
+
+* Jenkins CI/CD
+* Docker
+* Terraform
+* AWS
+* Linux
+* Monitoring
+* Infrastructure Automation
